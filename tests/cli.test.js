@@ -31,6 +31,10 @@ function loadCliWithMocks(mocks = {}) {
     mockModule("src/core/verify/index.js", mocks.verify);
   }
 
+  if (mocks.setup) {
+    mockModule("src/core/setup/index.js", mocks.setup);
+  }
+
   return require(projectPath("src/cli/index.js"));
 }
 
@@ -188,4 +192,33 @@ test("CLI 分发 verify 命令正常", async () => {
 
   assert.equal(receivedConfig.dryRun, true);
   assert.match(output, /OpenClaw 验证预览/);
+});
+
+
+test("help 输出包含 setup 命令", async () => {
+  const { runCli } = loadCliWithMocks();
+  const { output } = await captureConsole(() => runCli(["help"]));
+
+  assert.match(output, /openclaw setup/);
+  assert.match(output, /一键准备流程/);
+});
+
+test("CLI 分发 setup 命令正常", async () => {
+  let receivedConfig = null;
+  const { runCli } = loadCliWithMocks({
+    setup: {
+      runSetup: async (config) => {
+        receivedConfig = config;
+        return {
+          ok: true,
+          dryRun: true
+        };
+      }
+    }
+  });
+
+  const { output } = await captureConsole(() => runCli(["setup", "--dry-run"]));
+
+  assert.equal(receivedConfig.dryRun, true);
+  assert.match(output, /OpenClaw 一键准备流程预览/);
 });

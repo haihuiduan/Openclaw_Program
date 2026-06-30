@@ -5,10 +5,12 @@ const { runDoctor } = require("../core/doctor");
 const { installOpenClaw } = require("../core/installer");
 const { runConfigure } = require("../core/configure");
 const { runVerify } = require("../core/verify");
+const { runSetup } = require("../core/setup");
 const { formatDoctorReport } = require("./presenters/doctorPresenter");
 const { printHelp } = require("./presenters/helpPresenter");
 const { formatConfigureResult } = require("./presenters/configurePresenter");
 const { formatVerifyReport } = require("./presenters/verifyPresenter");
+const { formatSetupResult } = require("./presenters/setupPresenter");
 
 /**
  * 运行 CLI 命令。
@@ -54,6 +56,14 @@ async function runCli(args) {
         process.exitCode = 1;
       }
       return report;
+    }
+    case "setup": {
+      const result = await runSetup(config);
+      console.log(formatSetupResult(result));
+      if (!result.ok) {
+        process.exitCode = 1;
+      }
+      return result;
     }
     case "help":
     case "--help":

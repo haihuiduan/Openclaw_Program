@@ -9,6 +9,7 @@ const {
 const { loadConfig } = require("./config");
 const { runConfigure } = require("./core/configure");
 const { runVerify } = require("./core/verify");
+const { runSetup } = require("./core/setup");
 
 module.exports = {
   buildInstallPlan,
@@ -17,5 +18,6 @@ module.exports = {
   loadConfig,
   runConfigure,
   runDoctor,
-  runVerify
+  runVerify,
+  runSetup
 };

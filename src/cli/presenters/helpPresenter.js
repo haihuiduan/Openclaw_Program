@@ -17,6 +17,8 @@ function printHelp() {
   openclaw configure --reconfigure  修改已有 OpenClaw 配置
   openclaw verify              验证 OpenClaw 是否已安装并基本可用
   openclaw verify --dry-run    预览验证项目，不执行检查命令
+  openclaw setup               执行 OpenClaw 一键准备流程
+  openclaw setup --dry-run     预览一键准备流程，不修改文件
   openclaw help                查看帮助信息
   openclaw version             查看当前安装助手版本
 
