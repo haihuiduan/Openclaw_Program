@@ -64,7 +64,13 @@ function parseOptions(args) {
 
     if (arg === "--target-dir") {
       // --target-dir 后面紧跟目录值，所以读取下一个参数，并跳过它。
-      options.targetDir = args[index + 1];
+      const targetDir = args[index + 1];
+
+      if (!targetDir || targetDir.startsWith("--")) {
+        throw new Error("--target-dir 需要提供路径，例如：openclaw install --target-dir ~/.openclaw");
+      }
+
+      options.targetDir = targetDir;
       index += 1;
     }
 

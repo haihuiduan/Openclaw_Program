@@ -4,7 +4,7 @@
 
 OpenClaw Installer 是一个基于 Node.js 的一键安装与环境检测工具，用于帮助国内非技术用户准备 OpenClaw CLI 运行环境。
 
-当前阶段重点完善 CLI 骨架、doctor 安装前环境体检，以及 installer 的安装计划框架。doctor 检测电脑环境、OpenClaw 安装状态、网络访问和安装目录，不判断 AI 配置是否完整。
+当前阶段重点完善 CLI 骨架、doctor 安装前环境体检，以及 installer 的官方脚本安装流程。doctor 检测电脑环境、OpenClaw 安装状态、网络访问和安装目录，不判断 AI 配置是否完整。
 
 ## 开发阶段测试
 
@@ -39,9 +39,15 @@ openclaw help
 
 `openclaw install`
 
-执行当前安装流程。当前版本已具备环境检测、防重复安装和目标目录初始化能力。
+执行当前安装流程。当前版本会先运行环境检测；如果已经安装 OpenClaw，会跳过重复安装；如果未安装，会准备目标目录、下载 OpenClaw 官方安装脚本、使用 bash 执行脚本，并通过 `openclaw --version` 验证结果。
 
-请注意：下载 OpenClaw 安装资源、安装依赖、最终验证 openclaw 命令仍在后续版本实现，当前不要把它理解为完整安装器。
+官方安装脚本地址：
+
+```text
+https://openclaw.ai/install.sh
+```
+
+本项目不会直接使用 `curl | bash` 管道执行，而是先下载脚本到系统临时目录，再用 bash 执行本地脚本。
 
 `openclaw help`
 
@@ -68,17 +74,17 @@ installer 现在基于统一的安装计划运行：
 1. 环境检测。
 2. 检查 OpenClaw 是否已安装。
 3. 准备目标安装目录。
-4. 获取 OpenClaw 安装资源（后续实现）。
-5. 安装依赖（后续实现）。
-6. 验证 openclaw 命令（后续实现）。
+4. 下载 OpenClaw 官方安装脚本。
+5. 执行官方安装脚本。
+6. 验证 openclaw 命令。
 
-dry-run 会展示完整安装计划，并只运行只读检查。正式 install 当前只真实执行到目标目录初始化。
+dry-run 会展示完整安装计划，并只运行只读检查。正式 install 才会下载脚本、执行脚本和验证命令。
 
 ## AI 服务配置
 
 AI 服务商、API Key、Base URL、默认模型配置属于安装后的配置流程，后续会由独立的 `config` 模块处理。
 
-doctor 当前只负责安装前环境检测，不再判断 AI 配置是否完整，也不会读取或展示 API Key 状态。
+doctor 和 install 当前不处理 AI Provider、API Key、Base URL 或默认模型配置。
 
 ## 项目架构
 
@@ -100,7 +106,7 @@ CLI 入口文件，负责接收用户命令并分发到内部模块。
 
 `src/core/installer`
 
-安装计划与安装流程控制模块，负责生成安装计划、执行 dry-run 和当前已实现的安装初始化步骤。
+安装计划与安装流程控制模块，负责生成安装计划、执行 dry-run 和当前官方脚本安装流程。
 
 `src/config`
 
@@ -112,8 +118,8 @@ CLI 入口文件，负责接收用户命令并分发到内部模块。
 
 ## 后续计划
 
-- 完成 OpenClaw 安装资源获取。
-- 完成依赖安装与安装结果验证。
+- 增强安装日志和失败诊断。
+- 增加安装失败后的恢复建议。
 - 新增 `openclaw config`，用于配置 AI 服务商、API Key、Base URL 和默认模型。
 - 新增 `openclaw repair`，用于自动修复部分环境问题。
 - 新增 `openclaw update`，用于更新 OpenClaw。
