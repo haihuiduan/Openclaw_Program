@@ -1,0 +1,31 @@
+{
+  "name": "openclaw-installer",
+  "version": "0.1.0",
+  "description": "OpenClaw 中文一键安装助手，提供可复用的 CLI 核心模块。",
+  "main": "src/index.js",
+  "bin": {
+    "openclaw": "bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node bin/cli.js",
+    "doctor": "node bin/cli.js doctor",
+    "install:openclaw": "node bin/cli.js install",
+    "test": "node --test"
+  },
+  "keywords": [
+    "openclaw",
+    "installer",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.17"
+  }
+}
