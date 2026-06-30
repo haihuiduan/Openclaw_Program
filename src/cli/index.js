@@ -3,8 +3,12 @@
 const { loadConfig } = require("../config");
 const { runDoctor } = require("../core/doctor");
 const { installOpenClaw } = require("../core/installer");
+const { runConfigure } = require("../core/configure");
+const { runVerify } = require("../core/verify");
 const { formatDoctorReport } = require("./presenters/doctorPresenter");
 const { printHelp } = require("./presenters/helpPresenter");
+const { formatConfigureResult } = require("./presenters/configurePresenter");
+const { formatVerifyReport } = require("./presenters/verifyPresenter");
 
 /**
  * 运行 CLI 命令。
@@ -34,6 +38,22 @@ async function runCli(args) {
         process.exitCode = 1;
       }
       return result;
+    }
+    case "configure": {
+      const result = await runConfigure(config);
+      console.log(formatConfigureResult(result));
+      if (!result.ok) {
+        process.exitCode = 1;
+      }
+      return result;
+    }
+    case "verify": {
+      const report = await runVerify(config);
+      console.log(formatVerifyReport(report));
+      if (!report.ok) {
+        process.exitCode = 1;
+      }
+      return report;
     }
     case "help":
     case "--help":
@@ -77,6 +97,15 @@ function parseOptions(args) {
     if (arg === "--dry-run") {
       // dry-run 只预演流程，不真正改动系统。
       options.dryRun = true;
+    }
+
+    if (arg === "--onboard") {
+      options.onboard = true;
+      options.reconfigure = false;
+    }
+
+    if (arg === "--reconfigure") {
+      options.reconfigure = true;
     }
   }
 

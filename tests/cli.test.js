@@ -23,6 +23,14 @@ function loadCliWithMocks(mocks = {}) {
     mockModule("src/core/installer/index.js", mocks.installer);
   }
 
+  if (mocks.configure) {
+    mockModule("src/core/configure/index.js", mocks.configure);
+  }
+
+  if (mocks.verify) {
+    mockModule("src/core/verify/index.js", mocks.verify);
+  }
+
   return require(projectPath("src/cli/index.js"));
 }
 
@@ -121,4 +129,63 @@ test("--target-dir 缺少路径时抛出中文错误", async () => {
     () => runCli(["install", "--target-dir"]),
     /--target-dir 需要提供路径/
   );
+});
+
+
+test("help 输出包含 configure 命令", async () => {
+  const { runCli } = loadCliWithMocks();
+  const { output } = await captureConsole(() => runCli(["help"]));
+
+  assert.match(output, /openclaw configure/);
+  assert.match(output, /启动 OpenClaw 官方配置向导/);
+});
+
+test("configure 命令会调用 core configure 并输出中文结果", async () => {
+  let receivedConfig = null;
+  const { runCli } = loadCliWithMocks({
+    configure: {
+      runConfigure: async (config) => {
+        receivedConfig = config;
+        return {
+          ok: true,
+          message: "OpenClaw 官方配置流程已完成。"
+        };
+      }
+    }
+  });
+
+  const { output } = await captureConsole(() => runCli(["configure", "--dry-run"]));
+
+  assert.equal(receivedConfig.dryRun, true);
+  assert.match(output, /官方配置流程已完成/);
+});
+
+
+test("help 输出包含 verify 命令", async () => {
+  const { runCli } = loadCliWithMocks();
+  const { output } = await captureConsole(() => runCli(["help"]));
+
+  assert.match(output, /openclaw verify/);
+  assert.match(output, /验证 OpenClaw 是否已安装并基本可用/);
+});
+
+test("CLI 分发 verify 命令正常", async () => {
+  let receivedConfig = null;
+  const { runCli } = loadCliWithMocks({
+    verify: {
+      runVerify: async (config) => {
+        receivedConfig = config;
+        return {
+          ok: true,
+          dryRun: true,
+          checks: []
+        };
+      }
+    }
+  });
+
+  const { output } = await captureConsole(() => runCli(["verify", "--dry-run"]));
+
+  assert.equal(receivedConfig.dryRun, true);
+  assert.match(output, /OpenClaw 验证预览/);
 });

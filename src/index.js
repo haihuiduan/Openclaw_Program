@@ -7,11 +7,15 @@ const {
   installOpenClaw
 } = require("./core/installer");
 const { loadConfig } = require("./config");
+const { runConfigure } = require("./core/configure");
+const { runVerify } = require("./core/verify");
 
 module.exports = {
   buildInstallPlan,
   executeInstallPlan,
   installOpenClaw,
   loadConfig,
-  runDoctor
+  runConfigure,
+  runDoctor,
+  runVerify
 };
