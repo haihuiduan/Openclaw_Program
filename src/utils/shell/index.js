@@ -80,6 +80,59 @@ function runCommand(command, args = [], options = {}) {
 }
 
 /**
+ * 交互式执行系统命令。
+ * 输入：命令名、参数数组、可选执行配置。
+ * 输出：Promise，返回 { command, args, code, signal }。
+ * 说明：stdio: "inherit" 会把当前终端交给子进程，适合官方配置向导这类交互式 CLI。
+ */
+function runInteractiveCommand(command, args = [], options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env || process.env,
+      shell: false,
+      stdio: "inherit"
+    });
+
+    child.on("error", (error) => {
+      const result = {
+        command,
+        args,
+        code: 1,
+        signal: null,
+        error
+      };
+
+      if (options.allowFailure) {
+        resolve(result);
+        return;
+      }
+
+      error.result = result;
+      reject(error);
+    });
+
+    child.on("close", (code, signal) => {
+      const result = {
+        command,
+        args,
+        code,
+        signal
+      };
+
+      if (code === 0 || options.allowFailure) {
+        resolve(result);
+        return;
+      }
+
+      const error = new Error(`交互式命令执行失败：${command} ${args.join(" ")}`);
+      error.result = result;
+      reject(error);
+    });
+  });
+}
+
+/**
  * 判断某个命令是否存在。
  * 输入：命令名，例如 "npm"。
  * 输出：true/false。
@@ -97,5 +150,6 @@ async function commandExists(command) {
 
 module.exports = {
   commandExists,
-  runCommand
+  runCommand,
+  runInteractiveCommand
 };

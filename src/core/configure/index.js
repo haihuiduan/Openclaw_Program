@@ -1,6 +1,10 @@
 // configure 模块：封装 OpenClaw 官方配置/初始化命令。
 // 本模块不管理 API Key，不写配置文件，只调用 OpenClaw 本体提供的官方流程。
-const { commandExists, runCommand } = require("../../utils/shell");
+const {
+  commandExists,
+  runCommand,
+  runInteractiveCommand
+} = require("../../utils/shell");
 
 const CONFIGURE_MODES = {
   onboard: {
@@ -42,9 +46,13 @@ async function runConfigure(config = {}) {
     };
   }
 
-  const result = await runCommand(officialCommand.command, officialCommand.args, {
-    allowFailure: true
-  });
+  const result = await runInteractiveCommand(
+    officialCommand.command,
+    officialCommand.args,
+    {
+      allowFailure: true
+    }
+  );
 
   if (result.code !== 0) {
     return {
@@ -53,10 +61,7 @@ async function runConfigure(config = {}) {
       version,
       command: officialCommand.description,
       result,
-      message: [
-        "OpenClaw 官方配置流程执行失败。",
-        "错误摘要：" + summarizeOutput(result.stderr || result.stdout)
-      ].join("\n")
+      message: "OpenClaw 官方配置流程未完成。"
     };
   }
 
@@ -66,7 +71,7 @@ async function runConfigure(config = {}) {
     version,
     command: officialCommand.description,
     result,
-    message: "OpenClaw 官方配置流程已完成。"
+    message: "OpenClaw 官方配置流程已结束。"
   };
 }
 
@@ -78,25 +83,6 @@ async function readOpenClawVersion() {
   const version = (result.stdout + result.stderr).trim().split("\n")[0];
 
   return result.code === 0 && !result.timedOut && version ? version : null;
-}
-
-function summarizeOutput(output) {
-  const summary = redactSensitive(String(output || "未提供错误详情"))
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .slice(0, 3)
-    .join(" ");
-
-  return summary || "未提供错误详情";
-}
-
-function redactSensitive(input) {
-  return input
-    .replace(/(api[_-]?key\s*[:=]\s*)[^\s,;]+/gi, "$1[已隐藏]")
-    .replace(/(token\s*[:=]\s*)[^\s,;]+/gi, "$1[已隐藏]")
-    .replace(/(secret\s*[:=]\s*)[^\s,;]+/gi, "$1[已隐藏]")
-    .replace(/(authorization\s*[:=]\s*bearer\s+)[^\s,;]+/gi, "$1[已隐藏]");
 }
 
 module.exports = {
