@@ -1,0 +1,440 @@
+:root {
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f6f7f9;
+  color: #20242a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #f6f7f9;
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  width: min(1120px, calc(100vw - 48px));
+  margin: 0 auto;
+  padding: 32px 0;
+}
+
+.app-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px 0 24px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #586170;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 8px;
+  font-size: 36px;
+  line-height: 1.15;
+}
+
+h2 {
+  margin-bottom: 6px;
+  font-size: 19px;
+}
+
+.subtitle,
+.section-heading p,
+.app-footer {
+  color: #596273;
+}
+
+.subtitle {
+  margin-bottom: 0;
+  font-size: 17px;
+}
+
+.status-pill {
+  flex: 0 0 auto;
+  border: 1px solid #cfd6df;
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: #3c4654;
+  background: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.status-overview,
+.action-panel,
+.output-panel {
+  margin-bottom: 18px;
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 22px;
+}
+
+.section-heading {
+  margin-bottom: 18px;
+}
+
+.section-heading p {
+  margin-bottom: 0;
+  line-height: 1.5;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.status-item {
+  min-height: 86px;
+  border: 1px solid #e1e5ec;
+  border-radius: 8px;
+  padding: 14px;
+  background: #fafbfc;
+}
+
+.status-label {
+  display: block;
+  margin-bottom: 10px;
+  color: #697386;
+  font-size: 13px;
+}
+
+.status-item strong {
+  display: block;
+  color: #1f2937;
+  font-size: 18px;
+}
+
+.button-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.button-grid button {
+  min-height: 48px;
+  border: 1px solid #b8c2d1;
+  border-radius: 8px;
+  color: #142033;
+  background: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.button-grid button:hover {
+  border-color: #3867d6;
+  background: #f4f7ff;
+}
+
+.button-grid button:active {
+  transform: translateY(1px);
+}
+
+.button-grid button:disabled {
+  border-color: #d8dee8;
+  color: #8792a3;
+  background: #f1f4f8;
+  cursor: not-allowed;
+  transform: none;
+}
+
+#outputLog {
+  min-height: 190px;
+  margin: 0;
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  padding: 12px;
+  overflow: auto;
+  background: #f8fafc;
+  color: #20242a;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+#outputLog.is-loading {
+  border-color: #20242a;
+  padding: 16px;
+  background: #151922;
+  color: #e7edf7;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.doctor-summary {
+  margin-bottom: 10px;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-weight: 700;
+}
+
+.check-card {
+  margin-bottom: 8px;
+  border: 1px solid #eeeeee;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #ffffff;
+}
+
+.check-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.check-card-name {
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.check-card-status {
+  flex: 0 0 auto;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.check-card-message {
+  margin-top: 6px;
+  color: #5f6877;
+}
+
+.pass {
+  color: green;
+}
+
+.warning {
+  color: orange;
+}
+
+.fail {
+  color: red;
+}
+
+.info {
+  color: #3867d6;
+}
+
+.check-card.pass {
+  border-color: #b9e2c0;
+}
+
+.check-card.warning {
+  border-color: #f3d28f;
+}
+
+.check-card.fail {
+  border-color: #efb7b7;
+}
+
+.check-card.info {
+  border-color: #b9c9f0;
+}
+
+.install-progress-panel {
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.install-progress-title {
+  margin-bottom: 12px;
+  color: #1f2937;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8edf5;
+  margin-bottom: 14px;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: #3867d6;
+  transition: width 160ms ease;
+}
+
+.install-progress-row {
+  display: flex;
+  gap: 10px;
+  border: 1px solid #e1e5ec;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: #fafbfc;
+}
+
+.install-progress-icon {
+  flex: 0 0 auto;
+  width: 22px;
+  font-weight: 800;
+}
+
+.install-progress-body {
+  min-width: 0;
+}
+
+.install-progress-name {
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.install-progress-message {
+  margin-top: 4px;
+  color: #657083;
+  font-size: 13px;
+}
+
+.install-progress-row.success {
+  border-color: #b9e2c0;
+  color: green;
+}
+
+.install-progress-row.running {
+  border-color: #b9c9f0;
+  color: #3867d6;
+}
+
+.install-progress-row.fail {
+  border-color: #efb7b7;
+  color: red;
+}
+
+.install-progress-row.pending {
+  color: #7a8494;
+}
+
+.install-progress-row.skipped {
+  border-color: #d7dce5;
+  color: #657083;
+}
+
+.install-progress-row.retry {
+  border-color: #f0d28a;
+  color: #9a6500;
+}
+
+.install-result {
+  border: 1px solid #eeeeee;
+  border-radius: 8px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.install-result.pass {
+  border-color: #b9e2c0;
+}
+
+.install-result.fail {
+  border-color: #efb7b7;
+}
+
+.install-result-title {
+  margin-bottom: 10px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.install-result-message {
+  margin-bottom: 12px;
+  color: #3f4857;
+  white-space: pre-wrap;
+}
+
+.install-result-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.summary-item {
+  border: 1px solid #e1e5ec;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fafbfc;
+}
+
+.summary-item span {
+  display: block;
+  margin-bottom: 5px;
+  color: #697386;
+  font-size: 12px;
+}
+
+.summary-item strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #1f2937;
+  font-size: 13px;
+}
+
+.install-steps {
+  border-top: 1px solid #e1e5ec;
+  padding-top: 10px;
+}
+
+.install-step {
+  margin-top: 6px;
+  color: #5f6877;
+  font-size: 13px;
+}
+
+.app-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 2px 0;
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    width: min(100vw - 28px, 1120px);
+    padding: 18px 0;
+  }
+
+  .app-header,
+  .app-footer {
+    display: block;
+  }
+
+  .status-pill {
+    display: inline-block;
+    margin-top: 16px;
+  }
+
+  .status-grid,
+  .button-grid {
+    grid-template-columns: 1fr;
+  }
+}

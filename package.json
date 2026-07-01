@@ -16,7 +16,8 @@
     "start": "node bin/cli.js",
     "doctor": "node bin/cli.js doctor",
     "install:openclaw": "node bin/cli.js install",
-    "test": "node --test"
+    "test": "node --test",
+    "gui": "electron src/gui/main.js"
   },
   "keywords": [
     "openclaw",
@@ -27,5 +28,8 @@
   "license": "MIT",
   "engines": {
     "node": ">=18.17"
+  },
+  "devDependencies": {
+    "electron": "^43.0.0"
   }
 }

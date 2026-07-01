@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenClaw Installer</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">GUI MVP Shell</p>
+          <h1>OpenClaw Installer</h1>
+          <p class="subtitle">macOS OpenClaw 一键安装与配置助手</p>
+        </div>
+        <div class="status-pill" id="appStage">未接入 core</div>
+      </header>
+
+      <section class="status-overview" aria-labelledby="statusTitle">
+        <div class="section-heading">
+          <h2 id="statusTitle">当前状态概览</h2>
+          <p>当前界面只展示占位状态，后续会接入 doctor / install / configure / verify / setup。</p>
+        </div>
+
+        <div class="status-grid">
+          <div class="status-item">
+            <span class="status-label">环境检测</span>
+            <strong>未检测</strong>
+          </div>
+          <div class="status-item">
+            <span class="status-label">OpenClaw</span>
+            <strong>未知</strong>
+          </div>
+          <div class="status-item">
+            <span class="status-label">配置状态</span>
+            <strong>未知</strong>
+          </div>
+          <div class="status-item">
+            <span class="status-label">最近操作</span>
+            <strong id="lastAction">尚未操作</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="action-panel" aria-labelledby="actionsTitle">
+        <div class="section-heading">
+          <h2 id="actionsTitle">操作</h2>
+          <p>按钮当前只输出占位文字，不执行 shell 命令，不调用真实 core。</p>
+        </div>
+
+        <div class="button-grid">
+          <button type="button" data-action="开始检测" data-module="doctor">开始检测</button>
+          <button type="button" data-action="一键安装" data-module="install">一键安装</button>
+          <button type="button" data-action="一键准备" data-module="setup">一键准备</button>
+          <button type="button" data-action="配置 API" data-module="configure">配置 API</button>
+          <button type="button" data-action="验证可用" data-module="verify">验证可用</button>
+          <button type="button" data-action="查看日志" data-module="logs">查看日志</button>
+        </div>
+      </section>
+
+      <section class="output-panel" aria-labelledby="outputTitle">
+        <div class="section-heading">
+          <h2 id="outputTitle">输出日志</h2>
+          <p>这里将显示命令过程、成功信息、warning、失败原因和下一步建议。</p>
+        </div>
+        <div id="outputLog" class="output-log is-loading" aria-live="polite">OpenClaw Installer GUI 壳已启动。
+当前不会执行任何真实安装、配置或验证操作。</div>
+      </section>
+
+      <footer class="app-footer">
+        <span>安装器命令：openclaw-installer</span>
+        <span>官方 OpenClaw 命令：openclaw</span>
+      </footer>
+    </main>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
