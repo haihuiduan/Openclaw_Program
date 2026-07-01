@@ -77,7 +77,7 @@ async function runCli(args) {
       return null;
     default:
       // 未知命令直接抛错，由 bin/cli.js 的统一错误处理负责打印。
-      throw new Error(`未知命令：${command}\n请运行 "openclaw help" 查看用法说明。`);
+      throw new Error(`未知命令：${command}\n请运行 "openclaw-installer help" 查看用法说明。`);
   }
 }
 
@@ -97,7 +97,7 @@ function parseOptions(args) {
       const targetDir = args[index + 1];
 
       if (!targetDir || targetDir.startsWith("--")) {
-        throw new Error("--target-dir 需要提供路径，例如：openclaw install --target-dir ~/.openclaw");
+        throw new Error("--target-dir 需要提供路径，例如：openclaw-installer install --target-dir ~/.openclaw");
       }
 
       options.targetDir = targetDir;

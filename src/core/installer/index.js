@@ -28,7 +28,7 @@ function buildInstallPlan(config) {
         description: "检查 Node.js、系统命令、网络和目标安装目录是否满足安装前置条件。",
         action: "run_doctor",
         changes: [],
-        commands: ["openclaw doctor"],
+        commands: ["openclaw-installer doctor"],
         canRunInDryRun: true,
         status: "planned"
       },

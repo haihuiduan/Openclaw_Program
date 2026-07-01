@@ -36,7 +36,7 @@ function checkAiConfig(config) {
       category: "ai_config",
       code: "AI_CONFIG_INCOMPLETE",
       message: "检测到 API Key，但 AI 服务商或默认模型尚未完整配置。",
-      suggestion: "请补充 AI 服务商和默认模型配置。后续版本可通过 openclaw repair 协助配置。",
+      suggestion: "请补充 AI 服务商和默认模型配置。后续版本可通过 openclaw-installer repair 协助配置。",
       repairable: true,
       repairAction: "configure_ai_provider"
     };

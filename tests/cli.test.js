@@ -43,7 +43,7 @@ test("help 命令能正常执行", async () => {
   const { output } = await captureConsole(() => runCli(["help"]));
 
   assert.match(output, /OpenClaw 安装助手/);
-  assert.match(output, /openclaw doctor/);
+  assert.match(output, /openclaw-installer doctor/);
 });
 
 test("version 命令输出 package.json 里的版本号", async () => {
@@ -140,7 +140,7 @@ test("help 输出包含 configure 命令", async () => {
   const { runCli } = loadCliWithMocks();
   const { output } = await captureConsole(() => runCli(["help"]));
 
-  assert.match(output, /openclaw configure/);
+  assert.match(output, /openclaw-installer configure/);
   assert.match(output, /启动 OpenClaw 官方配置向导/);
 });
 
@@ -169,7 +169,7 @@ test("help 输出包含 verify 命令", async () => {
   const { runCli } = loadCliWithMocks();
   const { output } = await captureConsole(() => runCli(["help"]));
 
-  assert.match(output, /openclaw verify/);
+  assert.match(output, /openclaw-installer verify/);
   assert.match(output, /验证 OpenClaw 是否已安装并基本可用/);
 });
 
@@ -199,7 +199,7 @@ test("help 输出包含 setup 命令", async () => {
   const { runCli } = loadCliWithMocks();
   const { output } = await captureConsole(() => runCli(["help"]));
 
-  assert.match(output, /openclaw setup/);
+  assert.match(output, /openclaw-installer setup/);
   assert.match(output, /一键准备流程/);
 });
 

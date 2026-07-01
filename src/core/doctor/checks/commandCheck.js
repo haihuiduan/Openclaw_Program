@@ -6,21 +6,21 @@ const commandMeta = {
     name: "系统命令：node",
     category: "runtime",
     missingCode: "NODE_NOT_FOUND",
-    suggestion: "请安装 Node.js，后续版本可通过 openclaw repair 自动修复。",
+    suggestion: "请安装 Node.js，后续版本可通过 openclaw-installer repair 自动修复。",
     repairAction: "install_node"
   },
   npm: {
     name: "系统命令：npm",
     category: "dependency",
     missingCode: "NPM_NOT_FOUND",
-    suggestion: "请安装 Node.js/npm，后续版本可通过 openclaw repair 自动修复。",
+    suggestion: "请安装 Node.js/npm，后续版本可通过 openclaw-installer repair 自动修复。",
     repairAction: "install_node"
   },
   git: {
     name: "系统命令：git",
     category: "dependency",
     missingCode: "GIT_NOT_FOUND",
-    suggestion: "请安装 Git，后续版本可通过 openclaw repair 自动修复。",
+    suggestion: "请安装 Git，后续版本可通过 openclaw-installer repair 自动修复。",
     repairAction: "install_git"
   }
 };

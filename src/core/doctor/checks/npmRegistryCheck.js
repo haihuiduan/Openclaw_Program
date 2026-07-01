@@ -38,7 +38,7 @@ function createNetworkWarning(timedOut) {
     message: timedOut
       ? "访问 npm registry 超时，可能会影响安装依赖。"
       : "当前无法访问 npm registry，可能会影响安装依赖。",
-    suggestion: "请检查网络连接、代理/VPN 设置，或切换 npm 镜像源后重试。后续版本可通过 openclaw repair 尝试修复。",
+    suggestion: "请检查网络连接、代理/VPN 设置，或切换 npm 镜像源后重试。后续版本可通过 openclaw-installer repair 尝试修复。",
     repairable: true,
     repairAction: "fix_npm_registry"
   };

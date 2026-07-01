@@ -83,7 +83,7 @@ async function runVerify(config = {}) {
       name: "配置文件",
       ok: true,
       level: "warning",
-      message: "暂时无法读取配置文件路径，可稍后通过 openclaw configure 重新配置"
+      message: "暂时无法读取配置文件路径，可稍后通过 openclaw-installer configure 重新配置"
     });
   }
 

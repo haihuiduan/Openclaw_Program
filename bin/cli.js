@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// CLI 可执行入口：npm 全局安装后，用户输入 `openclaw` 会先运行这个文件。
+// CLI 可执行入口：npm 全局安装后，用户输入 `openclaw-installer` 会先运行这个文件。
 // 这里不写具体业务，只把命令参数交给 src/cli 处理，方便未来复用核心逻辑。
 const { runCli } = require("../src/cli");
 

@@ -11,8 +11,8 @@ async function checkOpenClawStatus() {
       level: "info",
       category: "openclaw",
       code: "OPENCLAW_NOT_FOUND",
-      message: "未检测到 OpenClaw，可运行 openclaw install 安装",
-      suggestion: "如需安装 OpenClaw，请运行 openclaw install。",
+      message: "未检测到 OpenClaw，可运行 openclaw-installer install 安装",
+      suggestion: "如需安装 OpenClaw，请运行 openclaw-installer install。",
       repairable: true,
       repairAction: "install_openclaw"
     };

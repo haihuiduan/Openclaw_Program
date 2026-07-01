@@ -68,7 +68,7 @@ function formatConclusion(report) {
   const hasWarning = report.checks.some((check) => check.level === "warning");
 
   if (hasFail) {
-    return "当前环境检测未通过，请先处理失败项后重新运行 openclaw doctor。";
+    return "当前环境检测未通过，请先处理失败项后重新运行 openclaw-installer doctor。";
   }
 
   if (hasWarning) {
