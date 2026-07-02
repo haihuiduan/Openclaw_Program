@@ -6,7 +6,7 @@ const path = require("node:path");
 const { runDoctor: runCoreDoctor } = require("../../core/doctor");
 const { runVerify: runCoreVerify } = require("../../core/verify");
 const { runWorkflow } = require("../../core/workflow/engine");
-const { commandExists, runCommand } = require("../../utils/shell");
+const { commandExists, runCommand, runDetachedCommand } = require("../../utils/shell");
 
 function runDoctor(config) {
   return runCoreDoctor(config);
@@ -62,6 +62,33 @@ async function runConfigure() {
     ok: true,
     message: "已打开终端，请按提示完成 OpenClaw 官方配置。"
   };
+}
+
+async function openDashboard() {
+  const installed = await commandExists("openclaw");
+
+  if (!installed) {
+    return {
+      success: false,
+      ok: false,
+      message: "未检测到 OpenClaw，请先执行一键安装。"
+    };
+  }
+
+  try {
+    await runDetachedCommand("openclaw", ["dashboard"]);
+    return {
+      success: true,
+      ok: true,
+      message: "已尝试打开 OpenClaw Dashboard。请在浏览器中继续使用。"
+    };
+  } catch (error) {
+    return {
+      success: false,
+      ok: false,
+      message: "无法打开 OpenClaw Dashboard，请稍后手动运行：openclaw dashboard"
+    };
+  }
 }
 
 async function checkConfigureDoneFlag() {
@@ -127,6 +154,7 @@ function runNamedWorkflow(workflowName, configOrProgress, maybeOnProgress) {
 
 module.exports = {
   checkConfigureDoneFlag,
+  openDashboard,
   openLogsDirectory,
   runConfigure,
   runDoctor,

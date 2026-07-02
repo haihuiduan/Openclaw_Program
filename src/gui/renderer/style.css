@@ -292,6 +292,61 @@ h2 {
   font-weight: 800;
 }
 
+.install-progress-description {
+  margin: -4px 0 12px;
+  color: #4b5565;
+  line-height: 1.5;
+}
+
+.simple-progress-panel {
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.progress-track.indeterminate {
+  position: relative;
+}
+
+.progress-track.indeterminate .progress-fill {
+  width: 38%;
+  animation: indeterminate-progress 1.2s ease-in-out infinite;
+}
+
+.simple-progress-list {
+  display: grid;
+  gap: 8px;
+}
+
+.simple-progress-row {
+  border: 1px solid #e1e5ec;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fafbfc;
+  color: #3f4857;
+}
+
+.simple-progress-row::before {
+  content: "●";
+  margin-right: 8px;
+  color: #3867d6;
+}
+
+@keyframes indeterminate-progress {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  50% {
+    transform: translateX(70%);
+  }
+
+  100% {
+    transform: translateX(260%);
+  }
+}
+
 .progress-track {
   height: 8px;
   overflow: hidden;
@@ -436,6 +491,117 @@ h2 {
 
 .inline-action-button:hover {
   background: #2f58bd;
+}
+
+.secondary-action-button {
+  min-height: 40px;
+  border: 1px solid #cfd6df;
+  border-radius: 8px;
+  padding: 0 14px;
+  color: #2d3748;
+  background: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondary-action-button:hover {
+  border-color: #9aa8ba;
+  background: #f5f7fa;
+}
+
+.configure-guide-card {
+  border: 1px solid #d9dee6;
+  border-radius: 8px;
+  padding: 16px;
+  background: #ffffff;
+}
+
+.configure-guide-title {
+  margin-bottom: 8px;
+  color: #1f2937;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.configure-guide-status {
+  margin-bottom: 12px;
+  border: 1px solid #b9c9f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f5f8ff;
+  color: #274a9f;
+  font-weight: 700;
+}
+
+.configure-guide-status.pass {
+  border-color: #b9e2c0;
+  background: #f5fbf6;
+  color: #186033;
+}
+
+.configure-guide-status.warning {
+  border-color: #f0d28a;
+  background: #fffaf0;
+  color: #715200;
+}
+
+.configure-guide-status.fail {
+  border-color: #efb7b7;
+  background: #fff6f6;
+  color: #a72525;
+}
+
+.configure-guide-intro {
+  margin-bottom: 12px;
+  color: #3f4857;
+}
+
+.configure-guide-steps {
+  margin: 0 0 14px 20px;
+  padding: 0;
+  color: #3f4857;
+}
+
+.configure-guide-steps li {
+  margin-bottom: 7px;
+}
+
+.configure-guide-note {
+  display: grid;
+  gap: 10px;
+  margin: 4px 0 14px;
+}
+
+.configure-guide-note-section {
+  border: 1px solid #e1e5ec;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fafbfc;
+  color: #3f4857;
+}
+
+.configure-guide-note-section strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #1f2937;
+}
+
+.configure-guide-note-section p {
+  margin: 0 0 5px;
+}
+
+.configure-guide-note-section p:last-child {
+  margin-bottom: 0;
+}
+
+.configure-guide-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.verify-actions {
+  margin-bottom: 12px;
 }
 
 .configure-done-prompt {

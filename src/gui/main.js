@@ -53,6 +53,10 @@ ipcMain.handle("configure:done-check", async () => {
   return installerService.checkConfigureDoneFlag();
 });
 
+ipcMain.handle("dashboard:open", async () => {
+  return installerService.openDashboard();
+});
+
 ipcMain.handle("logs:open", async () => {
   const result = await installerService.openLogsDirectory();
 

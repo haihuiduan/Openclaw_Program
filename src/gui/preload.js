@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld("openClawInstaller", {
   checkConfigureDone() {
     return ipcRenderer.invoke("configure:done-check");
   },
+  openDashboard() {
+    return ipcRenderer.invoke("dashboard:open");
+  },
   openLogsDirectory() {
     return ipcRenderer.invoke("logs:open");
   },

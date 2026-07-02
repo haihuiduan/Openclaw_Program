@@ -133,6 +133,46 @@ function runInteractiveCommand(command, args = [], options = {}) {
 }
 
 /**
+ * 后台启动一个系统命令，不等待它执行结束。
+ * 输入：命令名、参数数组、可选执行配置。
+ * 输出：Promise，命令成功启动后返回 { command, args, started }。
+ */
+function runDetachedCommand(command, args = [], options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env || process.env,
+      shell: false,
+      detached: true,
+      stdio: "ignore"
+    });
+
+    child.on("error", (error) => {
+      if (options.allowFailure) {
+        resolve({
+          command,
+          args,
+          started: false,
+          error
+        });
+        return;
+      }
+
+      reject(error);
+    });
+
+    child.on("spawn", () => {
+      child.unref();
+      resolve({
+        command,
+        args,
+        started: true
+      });
+    });
+  });
+}
+
+/**
  * 判断某个命令是否存在。
  * 输入：命令名，例如 "npm"。
  * 输出：true/false。
@@ -151,5 +191,6 @@ async function commandExists(command) {
 module.exports = {
   commandExists,
   runCommand,
+  runDetachedCommand,
   runInteractiveCommand
 };

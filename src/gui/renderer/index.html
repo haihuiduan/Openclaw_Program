@@ -14,13 +14,13 @@
           <h1>OpenClaw Installer</h1>
           <p class="subtitle">macOS OpenClaw 一键安装与配置助手</p>
         </div>
-        <div class="status-pill" id="appStage">未接入 core</div>
+        <div class="status-pill" id="appStage">CLI 核心已接入</div>
       </header>
 
       <section class="status-overview" aria-labelledby="statusTitle">
         <div class="section-heading">
           <h2 id="statusTitle">当前状态概览</h2>
-          <p>当前界面只展示占位状态，后续会接入 doctor / install / configure / verify / setup。</p>
+          <p>用于快速了解环境、安装、配置和验证状态。配置是否可用请以“验证配置”结果为准。</p>
         </div>
 
         <div class="status-grid">
@@ -34,7 +34,7 @@
           </div>
           <div class="status-item">
             <span class="status-label">配置状态</span>
-            <strong id="configStatus">未知</strong>
+            <strong id="configStatus">待配置</strong>
           </div>
           <div class="status-item">
             <span class="status-label">最近操作</span>
@@ -46,16 +46,16 @@
       <section class="action-panel" aria-labelledby="actionsTitle">
         <div class="section-heading">
           <h2 id="actionsTitle">操作</h2>
-          <p>按钮当前只输出占位文字，不执行 shell 命令，不调用真实 core。</p>
+          <p>推荐流程：开始检测 → 一键安装 → 配置引导 → 验证配置 → 打开控制台。<br />一键安装会先自动检测环境，再继续安装；如果失败，可点击“问题排查”查看安装记录。</p>
         </div>
 
         <div class="button-grid">
           <button type="button" data-action="开始检测" data-module="doctor">开始检测</button>
           <button type="button" data-action="一键安装" data-module="install">一键安装</button>
-          <button type="button" data-action="一键准备" data-module="setup">一键准备</button>
-          <button type="button" data-action="配置 API" data-module="configure">配置 API</button>
-          <button type="button" data-action="验证可用" data-module="verify">验证可用</button>
-          <button type="button" data-action="查看日志" data-module="logs">查看日志</button>
+          <button type="button" data-action="配置引导" data-module="configure">配置引导</button>
+          <button type="button" data-action="验证配置" data-module="verify">验证配置</button>
+          <button type="button" data-action="打开控制台" data-module="dashboard">打开控制台</button>
+          <button type="button" data-action="问题排查" data-module="logs">问题排查</button>
         </div>
       </section>
 
@@ -64,8 +64,9 @@
           <h2 id="outputTitle">输出日志</h2>
           <p>这里将显示命令过程、成功信息、warning、失败原因和下一步建议。</p>
         </div>
-        <div id="outputLog" class="output-log is-loading" aria-live="polite">OpenClaw Installer GUI 壳已启动。
-当前不会执行任何真实安装、配置或验证操作。</div>
+        <div id="outputLog" class="output-log is-loading" aria-live="polite">OpenClaw Installer 已启动。
+推荐流程：开始检测 → 一键安装 → 配置引导 → 验证配置 → 打开控制台。
+一键安装会自动完成前置环境检测，不需要强制先点“开始检测”。</div>
       </section>
 
       <footer class="app-footer">

@@ -20,50 +20,63 @@ OpenClaw 官方 onboarding 可能包含以下环节：
 1. Security disclaimer
    用户需要确认安全免责声明。个人使用场景下一般选择 Yes。
 
-2. QuickStart
+2. Setup mode
    第一次使用时，QuickStart 更适合普通用户快速完成基础配置。
 
-3. Model/auth provider
-   用户选择模型或认证来源，例如 OpenRouter、DeepSeek、OpenAI 等。
+3. Config handling
+   如果之前已有配置，官方流程可能询问是否保留当前值。普通用户通常应该选择 Keep current values；首次配置按默认继续。
 
-4. API Key
+4. Model/auth provider
+   用户选择模型或认证来源，例如 OpenRouter、OpenAI、DeepSeek 等。
+
+5. Auth method
+   根据 provider 选择认证方式。例如使用 OpenRouter 时，一般选择 OpenRouter API key。
+
+6. API Key
    用户粘贴自己的 API Key。OpenClaw Installer 不读取、不保存这部分内容。
 
-5. Default model
-   设置默认模型。不熟悉模型名称的用户可以先保持默认。
+7. Default model
+   设置默认模型。不熟悉模型名称的用户可以先保持默认，例如 `openrouter/auto`。
 
-6. Channel
+8. Select channel
    选择使用通道。首次体验可以优先建议 ClickClack。
 
-7. ClickClack plugin
-   与 Channel 相关的插件配置，适合首次体验的用户按默认建议继续。
-
-8. Web search
+9. Web search
    Web 搜索能力。普通用户如果不确定用途，可以先跳过。
 
-9. Skills
-   技能扩展能力。第一版安装助手不主动配置，用户可以先跳过。
+10. Skills
+    技能扩展能力。第一版安装助手不主动配置，用户可以先跳过。
 
-10. Hooks
+11. Missing skill dependencies
+    某些技能可能提示缺少依赖。普通用户不理解时可以先跳过，避免安装过程变复杂。
+
+12. Optional API keys
+    增强功能可能需要额外 Key。不知道用途时选择 No。
+
+13. Hooks
     自动化钩子能力。普通用户如果不清楚用途，可以先跳过。
 
-11. Gateway service
-    网关服务安装。首次使用建议保持默认安装。
+14. Gateway service
+    网关服务安装。首次使用建议保持默认；如果已安装，可以选择 Restart。
 
-12. Dashboard
-    官方流程可能生成 Dashboard URL，用于后续查看或管理。
+15. Hatch your agent
+    官方流程可能询问启动方式。普通用户建议选择 Hatch in Browser；如果进入 Terminal TUI，也可以后续打开 Dashboard。
 
-13. Terminal chat
-    配置完成后，官方命令可能引导用户在终端中开始使用 OpenClaw。
+16. Terminal TUI / Dashboard
+    Terminal TUI 是官方终端聊天界面，不是必须使用。Dashboard 是更适合普通用户的浏览器控制台，可以通过 `openclaw dashboard` 打开。
 
 ## 3. 普通用户痛点
 
 从普通用户视角看，官方 onboarding 的信息量比较大，主要痛点包括：
 
 - 不知道 Terminal 在做什么，容易误以为软件卡住。
+- 不知道 Config handling 里的 Keep current values 是否应该选择。
 - 不知道 Channel 是什么，也不清楚不同选项的影响。
 - 不知道 ClickClack 是否应该选择。
-- 不知道 Web search、Skills、Hooks 要不要开启。
+- 不知道 Web search、Skills、Missing dependencies、Hooks 要不要开启。
+- 不知道 Optional API keys 是否必须填写。
+- 不知道 Gateway service 是什么，看到 Restart / Install 时容易犹豫。
+- 不知道 Hatch your agent 后出现的 Terminal TUI 是否必须使用。
 - 配置完成后不知道需要回到 GUI 做验证。
 - “已检测”这类状态文案不够清楚，用户无法判断是否真的配置成功。
 
@@ -73,11 +86,19 @@ OpenClaw 官方 onboarding 可能包含以下环节：
 
 OpenClaw Installer 的 GUI 需要围绕“清楚引导，而不是替代官方配置”来设计：
 
-- 打开 Terminal 前显示简化版流程说明，让用户知道接下来会遇到什么。
-- 首次使用推荐 QuickStart + ClickClack，降低选择成本。
-- Web search、Skills、Hooks 等增强功能默认建议不懂先跳过。
-- 点击“配置 API”后，顶部配置状态显示为“等待验证”。
+- 打开 Terminal 前显示完整推荐路线，让用户知道接下来会遇到什么。
+- 首次使用推荐 QuickStart + ClickClack。
+- Config handling 推荐保留当前值，避免误删已有配置。
+- Web search、Skills、Missing dependencies、Hooks 等增强功能默认建议不懂先跳过。
+- Optional API keys 不知道用途时建议选择 No。
+- Gateway service 保持默认；已安装时可以选择 Restart。
+- Hatch your agent 推荐 Hatch in Browser。
+- 配置完成后解释 Terminal TUI 不是必须使用，普通用户更适合 Dashboard。
+- 点击“配置引导”后，顶部配置状态显示为“等待验证”。
 - 配置说明区域提供“我已完成配置，立即验证”按钮，避免用户不知道下一步该做什么。
+- GUI 主流程调整为：开始检测 → 一键安装 → 配置引导 → 验证配置 → 打开控制台。
+- 验证成功后提供“打开 OpenClaw 控制台”入口，执行官方命令 `openclaw dashboard`。
+- `setup` 能力仍保留在底层 workflow 和 CLI 中，但不再作为普通用户 GUI 主按钮，避免和“一键安装”混淆。
 - 使用 `configure-done.flag` 判断官方向导是否结束，但不把它当作配置成功的依据。
 - 是否配置成功仍然必须以 verify 结果为准。
 - 不保存、不读取 API Key，不自己写 OpenClaw 配置文件。
