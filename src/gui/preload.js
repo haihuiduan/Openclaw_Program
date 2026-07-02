@@ -13,6 +13,18 @@ contextBridge.exposeInMainWorld("openClawInstaller", {
   runSetup() {
     return ipcRenderer.invoke("setup:run");
   },
+  runConfigure() {
+    return ipcRenderer.invoke("configure:run");
+  },
+  runVerify() {
+    return ipcRenderer.invoke("verify:run");
+  },
+  checkConfigureDone() {
+    return ipcRenderer.invoke("configure:done-check");
+  },
+  openLogsDirectory() {
+    return ipcRenderer.invoke("logs:open");
+  },
   onInstallProgress(callback) {
     return subscribeToProgress("install:progress", callback);
   },

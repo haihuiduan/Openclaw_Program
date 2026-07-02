@@ -1,6 +1,6 @@
 // Electron 主进程：负责创建 GUI 窗口和 IPC 路由，业务调用交给 service 层。
 const path = require("node:path");
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const { loadConfig } = require("../config");
 const installerService = require("./services/installerService");
 
@@ -39,6 +39,39 @@ ipcMain.handle("setup:run", async () => {
   return installerService.runSetup(loadConfig(), (stepUpdate) => {
     sendProgress("setup:progress", stepUpdate);
   });
+});
+
+ipcMain.handle("configure:run", async () => {
+  return installerService.runConfigure(loadConfig());
+});
+
+ipcMain.handle("verify:run", async () => {
+  return installerService.runVerify(loadConfig());
+});
+
+ipcMain.handle("configure:done-check", async () => {
+  return installerService.checkConfigureDoneFlag();
+});
+
+ipcMain.handle("logs:open", async () => {
+  const result = await installerService.openLogsDirectory();
+
+  if (!result.ok) {
+    return result;
+  }
+
+  const openError = await shell.openPath(result.logPath);
+
+  if (openError) {
+    return {
+      success: false,
+      ok: false,
+      logPath: result.logPath,
+      message: "无法打开安装日志目录：" + openError
+    };
+  }
+
+  return result;
 });
 
 function sendProgress(channel, stepUpdate) {

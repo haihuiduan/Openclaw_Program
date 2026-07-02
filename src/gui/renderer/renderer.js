@@ -1,6 +1,9 @@
 // Renderer：通过 preload 暴露的安全 API 调用 doctor/install；其他按钮仍是占位逻辑。
 const outputLog = document.querySelector("#outputLog");
 const lastAction = document.querySelector("#lastAction");
+const environmentStatus = document.querySelector("#environmentStatus");
+const openClawStatus = document.querySelector("#openClawStatus");
+const configStatus = document.querySelector("#configStatus");
 const appStage = document.querySelector("#appStage");
 const buttons = document.querySelectorAll("button[data-action]");
 
@@ -79,6 +82,7 @@ const installStatusMeta = {
 
 let installProgressState = createInitialInstallProgress();
 let currentProgressTitle = "正在安装 OpenClaw...";
+let configurePollTimer = null;
 
 if (window.openClawInstaller) {
   appStage.textContent = window.openClawInstaller.stage;
@@ -106,21 +110,42 @@ for (const button of buttons) {
       return;
     }
 
+    if (moduleName === "configure") {
+      await handleConfigure();
+      return;
+    }
+
+    if (moduleName === "verify") {
+      await handleVerify();
+      return;
+    }
+
+    if (moduleName === "logs") {
+      await handleOpenLogs();
+      return;
+    }
+
     showPlaceholder(action, moduleName);
   });
 }
 
-async function runDoctorFromGui(button) {
-  button.disabled = true;
-  showLoading("正在检测...");
+async function runDoctorFromGui() {
+  setButtonsDisabled(true);
+  updateLastAction("开始检测");
+  updateStatusCard(environmentStatus, "检测中", "running");
+  showLoading("正在检测环境，请稍候...");
 
   try {
     const report = await window.openClawInstaller.runDoctor();
+    syncDoctorStatusOverview(report);
     renderDoctorReport(report);
+    updateLastAction("检测完成");
   } catch (error) {
+    updateLastAction("检测失败");
+    updateStatusCard(environmentStatus, "有问题", "fail");
     showError("doctor 执行失败。", error);
   } finally {
-    button.disabled = false;
+    setButtonsDisabled(false);
   }
 }
 
@@ -142,6 +167,78 @@ async function handleSetup() {
     subscribe: (callback) => window.openClawInstaller.onSetupProgress(callback),
     stepNames: setupStepNames
   });
+}
+
+async function handleConfigure() {
+  const confirmed = window.confirm([
+    "将打开系统终端运行 OpenClaw 官方配置向导。",
+    "",
+    "配置过程由 OpenClaw 官方命令完成，本工具不会保存 API Key。",
+    "",
+    "你可能会遇到：",
+    "1. 安全确认：个人使用一般选择 Yes",
+    "2. Setup mode：第一次使用选择 QuickStart",
+    "3. Model provider：选择你的 API 来源，例如 OpenRouter / DeepSeek / OpenAI",
+    "4. API Key：粘贴你的 Key",
+    "5. Default model：不懂就保持默认",
+    "6. Channel：第一次体验建议选择 ClickClack",
+    "7. Web search / Skills / Hooks：不懂可以先 Skip for now",
+    "8. Gateway service：保持默认安装即可",
+    "9. 配置完成后回到本软件点击“立即验证”"
+  ].join("\n"));
+
+  if (!confirmed) {
+    updateLastAction("配置已取消");
+    showLoading("已取消配置 API。");
+    return;
+  }
+
+  setButtonsDisabled(true);
+  updateLastAction("配置 API");
+  showLoading("正在打开系统终端...");
+
+  try {
+    const result = await window.openClawInstaller.runConfigure();
+    renderConfigureResult(result);
+  } catch (error) {
+    showError("configure 执行失败。", error);
+  } finally {
+    setButtonsDisabled(false);
+  }
+}
+
+async function handleVerify() {
+  setButtonsDisabled(true);
+  updateLastAction("验证可用");
+  showLoading("正在验证 OpenClaw...");
+
+  try {
+    const report = await window.openClawInstaller.runVerify();
+    renderVerifyReport(report);
+    syncVerifyStatusOverview(report);
+    updateLastAction("验证完成");
+  } catch (error) {
+    updateLastAction("验证失败");
+    showError("verify 执行失败。", error);
+  } finally {
+    setButtonsDisabled(false);
+  }
+}
+
+async function handleOpenLogs() {
+  setButtonsDisabled(true);
+  updateLastAction("查看日志");
+  showLoading("正在打开安装日志目录...");
+
+  try {
+    const result = await window.openClawInstaller.openLogsDirectory();
+    renderLogsResult(result);
+  } catch (error) {
+    updateLastAction("日志打开失败");
+    showError("查看日志失败。", error);
+  } finally {
+    setButtonsDisabled(false);
+  }
 }
 
 async function runWorkflowFromGui(options) {
@@ -324,6 +421,199 @@ function renderInstallResult(result, durationMs) {
   outputLog.appendChild(panel);
 }
 
+function renderLogsResult(result) {
+  outputLog.classList.remove("is-loading");
+  outputLog.replaceChildren();
+
+  const success = Boolean(result.success || result.ok);
+  const panel = document.createElement("div");
+  panel.className = "install-result " + (success ? "pass" : "fail");
+
+  const title = document.createElement("div");
+  title.className = "install-result-title";
+  title.textContent = success ? "✔ 已打开安装日志目录" : "✖ 暂无安装日志";
+
+  const message = document.createElement("div");
+  message.className = "install-result-message";
+  message.textContent = result.message || "还没有安装日志。请先执行一键安装。";
+
+  panel.append(title, message);
+
+  if (result.logPath) {
+    const summary = document.createElement("div");
+    summary.className = "install-result-summary";
+    summary.appendChild(createSummaryItem("日志目录", result.logPath));
+    panel.appendChild(summary);
+  }
+
+  outputLog.appendChild(panel);
+  updateLastAction(success ? "日志目录已打开" : "暂无安装日志");
+}
+
+function renderVerifyReport(report) {
+  outputLog.classList.remove("is-loading");
+  outputLog.replaceChildren();
+
+  const checks = Array.isArray(report.checks) ? report.checks : [];
+  const hasWarning = checks.some((check) => check.level === "warning");
+  const summary = document.createElement("div");
+  summary.className = "doctor-summary " + (report.ok ? (hasWarning ? "warning" : "pass") : "fail");
+  summary.textContent = getVerifyConclusion(report, checks);
+  outputLog.appendChild(summary);
+
+  const details = document.createElement("div");
+  details.className = "install-result-summary";
+
+  const versionCheck = findCheck(checks, "OpenClaw 版本");
+  const configCheck = findCheck(checks, "配置文件");
+
+  if (versionCheck && versionCheck.ok) {
+    details.appendChild(createSummaryItem("版本", versionCheck.message));
+  }
+
+  if (configCheck && configCheck.ok && configCheck.level !== "warning") {
+    details.appendChild(createSummaryItem("配置文件", configCheck.message.replace("已检测到配置文件路径：", "")));
+  }
+
+  if (details.children.length > 0) {
+    outputLog.appendChild(details);
+  }
+
+  for (const check of checks) {
+    outputLog.appendChild(createCheckCard(check));
+  }
+}
+
+function getVerifyConclusion(report, checks) {
+  if (!report.ok) {
+    const commandCheck = findCheck(checks, "OpenClaw 命令");
+
+    if (commandCheck && commandCheck.level === "fail") {
+      return "未检测到 OpenClaw，请先执行一键安装。";
+    }
+
+    return "OpenClaw 基础验证未通过，请先处理失败项。";
+  }
+
+  if (checks.some((check) => check.level === "warning")) {
+    return "OpenClaw 已安装并可以基本使用，但存在需要留意的提示。";
+  }
+
+  return "OpenClaw 已安装并可以基本使用。";
+}
+
+function syncVerifyStatusOverview(report) {
+  const checks = Array.isArray(report.checks) ? report.checks : [];
+  const commandCheck = findCheck(checks, "OpenClaw 命令");
+  const versionCheck = findCheck(checks, "OpenClaw 版本");
+  const configCheck = findCheck(checks, "配置文件");
+
+  if (commandCheck && commandCheck.level === "fail") {
+    updateStatusCard(openClawStatus, "未安装", "fail");
+  } else if (versionCheck && versionCheck.ok) {
+    updateStatusCard(openClawStatus, "已安装", "pass");
+  } else if (!report.ok) {
+    updateStatusCard(openClawStatus, "有问题", "fail");
+  }
+
+  if (!report.ok) {
+    updateStatusCard(configStatus, configCheck && configCheck.level === "warning" ? "待配置" : "配置异常", "warning");
+    return;
+  }
+
+  if (configCheck && configCheck.ok && configCheck.level !== "warning") {
+    updateStatusCard(configStatus, "已配置", "pass");
+  } else {
+    updateStatusCard(configStatus, "待配置", "warning");
+  }
+}
+
+function createVerifyNowButton() {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "inline-action-button";
+  button.textContent = "我已完成配置，立即验证";
+  button.addEventListener("click", async () => {
+    stopConfigureDonePolling();
+    await handleVerify();
+  });
+
+  return button;
+}
+
+function startConfigureDonePolling() {
+  stopConfigureDonePolling();
+  configurePollTimer = setInterval(async () => {
+    try {
+      const result = await window.openClawInstaller.checkConfigureDone();
+
+      if (result && result.done) {
+        stopConfigureDonePolling();
+        showConfigureDonePrompt(result.message);
+      }
+    } catch (error) {
+      stopConfigureDonePolling();
+    }
+  }, 4000);
+}
+
+function stopConfigureDonePolling() {
+  if (configurePollTimer) {
+    clearInterval(configurePollTimer);
+    configurePollTimer = null;
+  }
+}
+
+function showConfigureDonePrompt(message) {
+  const prompt = document.createElement("div");
+  prompt.className = "configure-done-prompt";
+
+  const text = document.createElement("div");
+  text.textContent = message || "检测到配置向导已结束，请点击‘立即验证’确认配置是否可用。";
+
+  prompt.append(text, createVerifyNowButton());
+  outputLog.appendChild(prompt);
+}
+
+function findCheck(checks, name) {
+  return checks.find((check) => String(check.name || "").includes(name));
+}
+
+function renderConfigureResult(result) {
+  outputLog.classList.remove("is-loading");
+  outputLog.replaceChildren();
+
+  const success = Boolean(result.success || result.ok);
+  const panel = document.createElement("div");
+  panel.className = "install-result " + (success ? "pass" : "fail");
+
+  const title = document.createElement("div");
+  title.className = "install-result-title";
+  title.textContent = success ? "✔ 配置向导已打开" : "✖ 无法启动配置向导";
+
+  const message = document.createElement("div");
+  message.className = "install-result-message";
+  message.textContent = success
+    ? "配置向导已打开。请在终端完成配置，完成后回到本软件点击‘我已完成配置，立即验证’。"
+    : (result.message || "未返回详细信息。");
+
+  panel.append(title, message);
+
+  if (success) {
+    panel.appendChild(createVerifyNowButton());
+  }
+
+  outputLog.appendChild(panel);
+
+  if (success) {
+    updateLastAction("配置向导已打开");
+    updateStatusCard(configStatus, "等待验证", "running");
+    startConfigureDonePolling();
+  } else {
+    updateLastAction("配置未完成");
+  }
+}
+
 function createInitialInstallProgress(stepNames = installStepNames) {
   return stepNames.map((name) => ({
     name,
@@ -338,6 +628,83 @@ function calculateInstallProgress() {
   }).length;
 
   return Math.round((completed / installProgressState.length) * 100);
+}
+
+function syncDoctorStatusOverview(report) {
+  const checks = Array.isArray(report.checks) ? report.checks : [];
+  const hasWarning = checks.some((check) => check.level === "warning");
+
+  if (!report.ok) {
+    updateStatusCard(environmentStatus, "有问题", "fail");
+  } else if (hasWarning) {
+    updateStatusCard(environmentStatus, "有警告", "warning");
+  } else {
+    updateStatusCard(environmentStatus, "通过", "pass");
+  }
+
+  updateOpenClawStatus(checks);
+  updateConfigStatus(checks);
+}
+
+function updateOpenClawStatus(checks) {
+  const openClawCheck = checks.find((check) => {
+    return String(check.name || "").toLowerCase().includes("openclaw");
+  });
+
+  if (!openClawCheck) {
+    updateStatusCard(openClawStatus, "未知", "neutral");
+    return;
+  }
+
+  const message = String(openClawCheck.message || "");
+
+  if (openClawCheck.level !== "fail" && message.includes("已安装")) {
+    updateStatusCard(openClawStatus, "已安装", openClawCheck.level === "warning" ? "warning" : "pass");
+    return;
+  }
+
+  if (openClawCheck.level === "fail" || message.includes("未安装") || message.includes("未检测到")) {
+    updateStatusCard(openClawStatus, "未安装", "fail");
+    return;
+  }
+
+  updateStatusCard(openClawStatus, "未知", "neutral");
+}
+
+function updateConfigStatus(checks) {
+  const configCheck = checks.find((check) => {
+    const name = String(check.name || "").toLowerCase();
+    return name.includes("配置文件") || name.includes("config file");
+  });
+
+  if (!configCheck) {
+    updateStatusCard(configStatus, "未检测", "neutral");
+    return;
+  }
+
+  updateStatusCard(configStatus, configCheck.level === "fail" ? "待配置" : "已配置", configCheck.level === "fail" ? "warning" : "pass");
+}
+
+function updateLastAction(value) {
+  if (lastAction) {
+    lastAction.textContent = value;
+  }
+}
+
+function updateStatusCard(element, value, state) {
+  if (!element) {
+    return;
+  }
+
+  element.textContent = value;
+  const card = element.closest(".status-item");
+
+  if (!card) {
+    return;
+  }
+
+  card.classList.remove("status-pass", "status-warning", "status-fail", "status-running", "status-neutral");
+  card.classList.add("status-" + state);
 }
 
 function createSummaryItem(label, value) {
