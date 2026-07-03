@@ -757,14 +757,23 @@ h2 {
 .wizard-utilities {
   border-top: 1px solid #e1e5ec;
   padding-top: 12px;
+  color: #7a8494;
+  font-size: 12px;
+}
+
+.advanced-options-label {
+  flex-basis: 100%;
+  color: #7a8494;
+  font-size: 12px;
 }
 
 .link-button {
   border: 0;
   padding: 0;
-  color: #3867d6;
+  color: #52627a;
   background: transparent;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -802,10 +811,11 @@ h2 {
 
 .app-footer {
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
+  justify-content: flex-end;
+  gap: 14px;
   padding: 8px 2px 0;
-  font-size: 13px;
+  color: #8a94a3;
+  font-size: 12px;
 }
 
 @media (max-width: 760px) {

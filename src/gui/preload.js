@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("openClawInstaller", {
   appName: "OpenClaw Installer",
-  stage: "GUI MVP Shell",
+  stage: "关于本工具",
   runDoctor() {
     return ipcRenderer.invoke("doctor:run");
   },
