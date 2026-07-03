@@ -178,6 +178,35 @@ h2 {
   text-align: right;
 }
 
+.about-menu-feedback {
+  margin: 8px 0 2px;
+  border: 1px solid #e6edf6;
+  border-radius: 8px;
+  padding: 7px 8px;
+  background: #f8fafc;
+  color: #46556a;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.about-menu-feedback.pass {
+  border-color: #cfe8d6;
+  background: #f3fbf5;
+  color: #176033;
+}
+
+.about-menu-feedback.warning {
+  border-color: #f1dfaa;
+  background: #fffaf0;
+  color: #715200;
+}
+
+.toolbox-diagnostics-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .about-menu-actions,
 .about-menu-links {
   display: flex;

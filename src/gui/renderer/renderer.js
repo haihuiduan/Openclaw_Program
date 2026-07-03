@@ -9,6 +9,8 @@ const configStatus = document.querySelector("#configStatus");
 const versionStatus = document.querySelector("#versionStatus");
 let consoleStatus = null;
 const appStage = document.querySelector("#appStage");
+const wizardTitle = document.querySelector("#wizardTitle");
+const wizardDescription = wizardTitle && wizardTitle.nextElementSibling;
 const aboutMenu = document.querySelector("#aboutMenu");
 const homeButton = document.querySelector("#homeButton");
 const wizardProgress = document.querySelector("#wizardProgress");
@@ -44,7 +46,10 @@ const wizardState = {
   dashboardMessage: "",
   isBusy: false,
   recentActions: [],
-  updateNoticeDismissed: false
+  updateNoticeDismissed: false,
+  updateCheckStatus: "idle",
+  toolboxNotice: null,
+  toolboxDoctorReport: null
 };
 
 setupCompactStatusBar();
@@ -84,6 +89,7 @@ probeStartupState();
 
 function renderWizard() {
   syncConsoleStatus();
+  updateWizardHeading();
   renderProgress();
   renderCurrentStep();
   renderUtilities();
@@ -175,6 +181,21 @@ function syncConsoleStatus() {
   }
 
   updateStatusCard(consoleStatus, "未运行", "neutral");
+}
+
+function updateWizardHeading() {
+  if (!wizardTitle || !wizardDescription) {
+    return;
+  }
+
+  if (isToolboxHome()) {
+    wizardTitle.textContent = "OpenClaw 已准备好";
+    wizardDescription.textContent = "你可以启动控制台开始使用 OpenClaw，也可以更换 API Key 或管理后台服务。";
+    return;
+  }
+
+  wizardTitle.textContent = "开始使用 OpenClaw";
+  wizardDescription.textContent = "按提示完成 OpenClaw 准备、API Key 配置和控制台启动。首次使用通常只需要几分钟。";
 }
 
 function renderProgress() {
@@ -301,6 +322,7 @@ function renderToolboxHome() {
 
   const card = createCard("控制台", "启动后可在浏览器中使用 OpenClaw 控制台。");
   appendDashboardNotice(card);
+  appendToolboxDiagnostics(card);
   wizardCard.appendChild(card);
 
   addAction("启动控制台", openDashboard, "primary");
@@ -1236,6 +1258,11 @@ function renderAboutMenu() {
   aboutMenu.appendChild(createAboutRow("OpenClaw 最新版本", latestVersion || "暂时无法检查"));
   aboutMenu.appendChild(createAboutRow("更新状态", updateState));
 
+  const feedback = createUpdateCheckFeedback(version);
+  if (feedback) {
+    aboutMenu.appendChild(feedback);
+  }
+
   const updateActions = document.createElement("div");
   updateActions.className = "about-menu-actions";
   updateActions.appendChild(createAboutButton("检查更新", checkUpdateFromAbout));
@@ -1259,8 +1286,7 @@ function renderAboutMenu() {
   }));
   maintenanceLinks.appendChild(createAboutLink("重新检查环境", () => {
     closeAboutMenu();
-    goToStep(1);
-    runDoctorStep();
+    rerunEnvironmentCheck();
   }));
   aboutMenu.appendChild(maintenanceLinks);
 
@@ -1290,6 +1316,35 @@ function createAboutSectionTitle(text) {
   title.className = "about-menu-section-title";
   title.textContent = text;
   return title;
+}
+
+function createUpdateCheckFeedback(version) {
+  if (wizardState.updateCheckStatus === "checking") {
+    return createAboutFeedback("正在检查更新…", "info");
+  }
+
+  if (wizardState.updateCheckStatus === "latest") {
+    return createAboutFeedback("已是最新版本", "pass");
+  }
+
+  if (wizardState.updateCheckStatus === "available") {
+    const currentVersion = version.currentVersion || wizardState.openClawVersion || "未知";
+    const latestVersion = version.latestVersion || "未知";
+    return createAboutFeedback("发现 OpenClaw 新版本：" + currentVersion + " → " + latestVersion, "warning");
+  }
+
+  if (wizardState.updateCheckStatus === "failed") {
+    return createAboutFeedback("暂时无法检查最新版本，请稍后再试。", "warning");
+  }
+
+  return null;
+}
+
+function createAboutFeedback(message, state) {
+  const feedback = document.createElement("div");
+  feedback.className = "about-menu-feedback " + (state || "info");
+  feedback.textContent = message;
+  return feedback;
 }
 
 function createAboutRow(labelText, valueText) {
@@ -1322,8 +1377,20 @@ function createAboutLink(label, handler) {
 }
 
 async function checkUpdateFromAbout() {
+  wizardState.updateCheckStatus = "checking";
   updateLastAction("正在检查更新");
-  await refreshVersionInfo({ renderHome: true });
+  renderAboutMenu();
+
+  const version = await refreshVersionInfo({ renderHome: true });
+
+  if (!version || !version.canCheckLatest) {
+    wizardState.updateCheckStatus = "failed";
+    updateLastAction("检查更新失败");
+  } else {
+    wizardState.updateCheckStatus = version.updateAvailable ? "available" : "latest";
+    updateLastAction("检查更新完成");
+  }
+
   renderAboutMenu();
 }
 
@@ -1443,7 +1510,7 @@ function renderUtilities() {
   doctor.type = "button";
   doctor.className = "link-button";
   doctor.textContent = "重新检查环境";
-  doctor.addEventListener("click", runDoctorStep);
+  doctor.addEventListener("click", rerunEnvironmentCheck);
 
   const logs = document.createElement("button");
   logs.type = "button";
@@ -1452,6 +1519,75 @@ function renderUtilities() {
   logs.addEventListener("click", openLogs);
 
   wizardUtilities.append(advanced, doctor, logs);
+}
+
+async function rerunEnvironmentCheck() {
+  if (isReadyToUse() && wizardState.currentStep === 0) {
+    return runToolboxDoctorCheck();
+  }
+
+  return runDoctorStep();
+}
+
+async function runToolboxDoctorCheck() {
+  setBusy(true);
+  wizardState.toolboxNotice = { message: "正在重新检查环境…", state: "info" };
+  wizardState.toolboxDoctorReport = null;
+  updateLastAction("重新检查环境");
+  renderWizard();
+
+  try {
+    const report = await window.openClawInstaller.runDoctor();
+    wizardState.lastDoctorReport = report;
+    wizardState.toolboxDoctorReport = report;
+    syncDoctorStatus(report);
+
+    if (report.ok) {
+      wizardState.environmentStatus = "正常";
+      updateStatusCard(environmentStatus, "正常", "pass");
+      wizardState.toolboxNotice = { message: "环境正常，这台 Mac 可以继续使用 OpenClaw。", state: "pass" };
+      updateLastAction("环境检查正常");
+    } else {
+      wizardState.environmentStatus = "需要处理";
+      updateStatusCard(environmentStatus, "需要处理", "fail");
+      wizardState.toolboxNotice = { message: "环境需要处理，请查看下方提示。", state: "fail" };
+      updateLastAction("环境需要处理");
+    }
+  } catch (error) {
+    wizardState.toolboxNotice = { message: getErrorMessage(error), state: "fail" };
+    updateLastAction("环境检查失败");
+  } finally {
+    setBusy(false);
+    if (wizardState.currentStep === 0) {
+      renderWizard();
+    }
+  }
+}
+
+function appendToolboxDiagnostics(card) {
+  if (wizardState.toolboxNotice) {
+    card.appendChild(createNotice(wizardState.toolboxNotice.message, wizardState.toolboxNotice.state));
+  }
+
+  if (!wizardState.toolboxDoctorReport || wizardState.toolboxDoctorReport.ok) {
+    return;
+  }
+
+  const checks = Array.isArray(wizardState.toolboxDoctorReport.checks) ? wizardState.toolboxDoctorReport.checks : [];
+  const visibleChecks = checks.filter((check) => check.level === "fail" || check.level === "warning");
+
+  if (!visibleChecks.length) {
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "toolbox-diagnostics-list";
+
+  for (const check of visibleChecks) {
+    list.appendChild(createCheckCard(check));
+  }
+
+  card.appendChild(list);
 }
 
 function addConsoleActions() {
