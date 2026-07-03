@@ -844,3 +844,30 @@ h2 {
   font-size: 12px;
   line-height: 1.45;
 }
+
+.form-inline-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 12px;
+  border: 1px solid #efb7b7;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff6f6;
+  color: #a72525;
+  font-weight: 700;
+}
+
+.form-inline-error[hidden] {
+  display: none;
+}
+
+.quick-config-field.has-error input {
+  border-color: #d23b3b;
+  outline: 2px solid #f4b8b8;
+}
+
+.inline-link-action {
+  color: #a72525;
+}

@@ -32,6 +32,7 @@ const wizardState = {
   isProbingStartup: false,
   lastDoctorReport: null,
   lastVerifyReport: null,
+  pendingQuickConfigVerification: false,
   isBusy: false
 };
 
@@ -131,12 +132,13 @@ function renderWelcomeStep() {
   }
 
   if (wizardState.installStatus === "已安装") {
-    const card = createCard("还差一步：配置 API Key", "OpenClaw 已安装。请配置 AI 服务商后开始使用。");
-    card.appendChild(createNotice("配置完成后，本软件会帮你验证 OpenClaw 是否可以使用。", "info"));
+    const card = createCard("还差一步：配置 API Key", "已检测到 OpenClaw 已安装。请配置 AI 服务商 API Key，或验证已有配置。");
+    card.appendChild(createNotice("仅检测到配置文件路径还不能证明 API Key 可用。完成 GUI 快速配置并验证通过后，才会显示为已配置。", "info"));
     appendVersionInfo(card);
     wizardCard.appendChild(card);
     addAction("配置 API Key", () => goToConfigure("first"), "primary");
-    addAction("高级设置", openAdvancedConfigure, "secondary");
+    addAction("验证已有配置", () => runVerifyStep({ confirmConfig: false }), "secondary");
+    addAction("官方完整配置向导", openAdvancedConfigure, "secondary");
     addUpdateActionIfNeeded();
     return;
   }
@@ -310,9 +312,11 @@ async function runQuickConfigure(form) {
   const defaultModel = resolveSelectedModel(form);
 
   if (defaultModel === null) {
-    renderResultCard("需要模型名称", "请输入自定义模型名称，或选择自动推荐。", "fail");
+    showCustomModelError(form);
     return;
   }
+
+  clearCustomModelError(form);
 
   if (!apiKey) {
     renderResultCard("需要 API Key", "请先输入 API Key。", "fail");
@@ -346,10 +350,12 @@ async function runQuickConfigure(form) {
       return;
     }
 
-    wizardState.configStatus = "已配置";
-    updateLastAction("配置完成");
+    wizardState.pendingQuickConfigVerification = true;
+    wizardState.configStatus = "待验证";
+    updateStatusCard(configStatus, "待验证", "warning");
+    updateLastAction("配置完成，正在验证");
     renderResultCard("快速配置完成", "配置已执行，正在进入验证步骤。", "pass");
-    await runVerifyStep({ autoAdvance: true });
+    await runVerifyStep({ autoAdvance: true, confirmConfig: true });
   } catch (error) {
     form.elements.apiKey.value = "";
     wizardState.configStatus = "配置异常";
@@ -377,9 +383,12 @@ async function runVerifyStep(options = {}) {
   try {
     const report = await window.openClawInstaller.runVerify();
     wizardState.lastVerifyReport = report;
-    syncVerifyStatus(report);
+    const verifySummary = syncVerifyStatus(report, {
+      confirmConfig: options.confirmConfig === true || wizardState.pendingQuickConfigVerification === true
+    });
 
-    if (report.ok && wizardState.configStatus === "已配置") {
+    if (report.ok && verifySummary.confirmedConfigured) {
+      wizardState.pendingQuickConfigVerification = false;
       wizardState.verifyStatus = "通过";
       updateStatusCard(configStatus, "已配置", "pass");
       updateLastAction("验证完成");
@@ -387,10 +396,17 @@ async function runVerifyStep(options = {}) {
       await refreshVersionInfo({ renderHome: false });
       addAction("下一步：打开控制台", () => goToStep(4), "primary");
     } else if (report.ok) {
-      wizardState.verifyStatus = "失败";
-      updateLastAction("待配置");
-      renderCheckReport("配置可能未完成，请检查 API Key 或重新配置。", report);
-      addAction("返回配置", () => goToConfigure("first"), "secondary");
+      wizardState.pendingQuickConfigVerification = false;
+      wizardState.verifyStatus = "未确认";
+      updateLastAction(verifySummary.hasConfigPath ? "待验证" : "待配置");
+      renderCheckReport(
+        verifySummary.hasConfigPath
+          ? "检测到配置文件，但尚未确认 API Key 可用。建议使用 GUI 快速配置后再验证。"
+          : "尚未检测到完整配置，请先配置 API Key。",
+        report
+      );
+      addAction("配置 API Key", () => goToConfigure("first"), "primary");
+      addAction("官方完整配置向导", openAdvancedConfigure, "secondary");
       addAction("问题排查", openLogs, "secondary");
     } else {
       wizardState.verifyStatus = "失败";
@@ -436,12 +452,17 @@ async function runUpdateStep() {
     await refreshVersionInfo({ renderHome: false });
     const report = await window.openClawInstaller.runVerify();
     wizardState.lastVerifyReport = report;
-    syncVerifyStatus(report);
+    const verifySummary = syncVerifyStatus(report, { confirmConfig: false });
 
-    if (report.ok) {
+    if (report.ok && verifySummary.confirmedConfigured) {
       updateLastAction("更新完成");
       renderResultCard("OpenClaw 已更新完成", "OpenClaw 已更新完成。你可以继续打开控制台使用。", "pass");
       addAction("打开控制台", openDashboard, "primary");
+      addAction("回到首页", handleGoHome, "secondary");
+    } else if (report.ok) {
+      updateLastAction("更新完成，待验证配置");
+      renderResultCard("OpenClaw 已更新完成", "OpenClaw 已更新完成，但当前尚未确认 API 配置可用。建议先配置或验证 API。", "warning");
+      addAction("配置 API Key", () => goToConfigure("first"), "primary");
       addAction("回到首页", handleGoHome, "secondary");
     } else {
       updateLastAction("更新后验证失败");
@@ -515,7 +536,7 @@ async function openLogs() {
       result.ok ? "pass" : "warning"
     );
   } catch (error) {
-    renderResultCard("问题排查失败", getErrorMessage(error), "fail");
+    renderResultCard("快速配置失败", getErrorMessage(error), "fail");
   } finally {
     setBusy(false);
   }
@@ -539,6 +560,11 @@ function createQuickConfigureForm() {
     createParagraph("服务商请从列表中选择。特殊服务商或高级模型配置可在高级设置中使用官方配置向导。本工具不会保存、展示或记录你的 API Key。"),
   );
 
+  const formNotice = document.createElement("div");
+  formNotice.className = "form-inline-error";
+  formNotice.hidden = true;
+  form.appendChild(formNotice);
+
   const providerSelect = form.elements.provider;
   const modelSelect = form.elements.modelChoice;
   const apiKeyInput = form.elements.apiKey;
@@ -547,9 +573,19 @@ function createQuickConfigureForm() {
   providerSelect.addEventListener("change", () => {
     apiKeyInput.placeholder = getProviderPlaceholder(providerSelect.value);
     populateModelOptions(modelSelect, providerSelect.value);
+    modelSelect.value = "auto";
+    customModelInput.value = "";
+    clearCustomModelError(form);
     updateCustomModelVisibility(form);
   });
-  modelSelect.addEventListener("change", () => updateCustomModelVisibility(form));
+  modelSelect.addEventListener("change", () => {
+    if (modelSelect.value !== "custom") {
+      customModelInput.value = "";
+      clearCustomModelError(form);
+    }
+    updateCustomModelVisibility(form);
+  });
+  customModelInput.addEventListener("input", () => clearCustomModelError(form));
 
   const actions = document.createElement("div");
   actions.className = "configure-guide-actions";
@@ -654,6 +690,47 @@ function updateCustomModelVisibility(form) {
     help.textContent = "仅在你确认模型 ID 正确时使用。模型名称填错可能导致聊天时报错。";
     customField.appendChild(help);
   }
+}
+
+function showCustomModelError(form) {
+  const notice = form.querySelector(".form-inline-error");
+  const customField = form.elements.customModel.closest(".quick-config-field");
+  form.elements.modelChoice.value = "custom";
+  updateCustomModelVisibility(form);
+  form.elements.customModel.focus();
+  customField.classList.add("has-error");
+
+  notice.replaceChildren();
+  notice.hidden = false;
+
+  const message = document.createElement("span");
+  message.textContent = "请输入自定义模型名称，或改用自动推荐。";
+
+  const action = document.createElement("button");
+  action.type = "button";
+  action.className = "link-button inline-link-action";
+  action.textContent = "改用自动推荐";
+  action.addEventListener("click", () => useAutoModel(form));
+
+  notice.append(message, action);
+}
+
+function clearCustomModelError(form) {
+  const notice = form.querySelector(".form-inline-error");
+  const customField = form.elements.customModel.closest(".quick-config-field");
+  customField.classList.remove("has-error");
+
+  if (notice) {
+    notice.hidden = true;
+    notice.replaceChildren();
+  }
+}
+
+function useAutoModel(form) {
+  form.elements.modelChoice.value = "auto";
+  form.elements.customModel.value = "";
+  clearCustomModelError(form);
+  updateCustomModelVisibility(form);
 }
 
 function createInputField(labelText, name, type, placeholder) {
@@ -1048,9 +1125,9 @@ async function probeStartupState() {
     }
 
     if (report.ok) {
-      syncVerifyStatus(report);
-      wizardState.verifyStatus = wizardState.configStatus === "已配置" ? "通过" : "未验证";
-      updateLastAction(wizardState.configStatus === "已配置" ? "已准备好" : "待配置");
+      const verifySummary = syncVerifyStatus(report, { confirmConfig: false });
+      wizardState.verifyStatus = verifySummary.confirmedConfigured ? "通过" : "未验证";
+      updateLastAction(verifySummary.confirmedConfigured ? "已准备好" : verifySummary.hasConfigPath ? "待验证" : "待配置");
     } else if (commandCheck && !commandCheck.ok) {
       wizardState.installStatus = "未安装";
       updateStatusCard(openClawStatus, "未安装", "fail");
@@ -1120,27 +1197,50 @@ function syncInstallStatus(result) {
   }
 }
 
-function syncVerifyStatus(report) {
+function syncVerifyStatus(report, options = {}) {
   const checks = Array.isArray(report.checks) ? report.checks : [];
+  const commandCheck = checks.find((check) => String(check.name || "").includes("OpenClaw 命令"));
   const versionCheck = checks.find((check) => String(check.name || "").includes("OpenClaw 版本"));
   const configCheck = checks.find((check) => String(check.name || "").includes("配置文件"));
+  const hasConfigPath = Boolean(report.ok && configCheck && configCheck.ok && configCheck.level !== "warning");
+  const canConfirmConfig = Boolean(options.confirmConfig || (wizardState.configStatus === "已配置" && report.ok));
 
   if (versionCheck && versionCheck.ok) {
+    wizardState.installStatus = "已安装";
     updateStatusCard(openClawStatus, "已安装", "pass");
     wizardState.openClawVersion = versionCheck.message;
     updateStatusCard(versionStatus, versionCheck.message, "pass");
   }
 
-  if (report.ok && configCheck && configCheck.ok && configCheck.level !== "warning") {
+  if (hasConfigPath && canConfirmConfig) {
     wizardState.configStatus = "已配置";
     updateStatusCard(configStatus, "已配置", "pass");
-  } else if (report.ok) {
+    return { confirmedConfigured: true, hasConfigPath };
+  }
+
+  if (hasConfigPath) {
+    wizardState.configStatus = "待验证";
+    updateStatusCard(configStatus, "待验证", "warning");
+    return { confirmedConfigured: false, hasConfigPath };
+  }
+
+  if (report.ok) {
     wizardState.configStatus = "待配置";
     updateStatusCard(configStatus, "待配置", "warning");
-  } else {
-    wizardState.configStatus = "配置异常";
-    updateStatusCard(configStatus, "配置异常", "fail");
+    return { confirmedConfigured: false, hasConfigPath: false };
   }
+
+  if (commandCheck && !commandCheck.ok) {
+    wizardState.installStatus = "未安装";
+    updateStatusCard(openClawStatus, "未安装", "fail");
+    wizardState.configStatus = "待配置";
+    updateStatusCard(configStatus, "待配置", "warning");
+    return { confirmedConfigured: false, hasConfigPath: false };
+  }
+
+  wizardState.configStatus = "配置异常";
+  updateStatusCard(configStatus, "配置异常", "fail");
+  return { confirmedConfigured: false, hasConfigPath: false };
 }
 
 function updateStatusCard(element, value, state) {
