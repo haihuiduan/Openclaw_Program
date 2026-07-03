@@ -33,6 +33,8 @@ const wizardState = {
   lastDoctorReport: null,
   lastVerifyReport: null,
   pendingQuickConfigVerification: false,
+  pendingQuickConfigDetails: null,
+  guiConfigState: null,
   dashboardStatus: "idle",
   dashboardMessage: "",
   isBusy: false
@@ -317,6 +319,7 @@ async function runInstallStep() {
 async function runQuickConfigure(form) {
   const apiKey = String(form.elements.apiKey.value || "").trim();
   const provider = String(form.elements.provider.value || "openrouter");
+  const modelChoice = String(form.elements.modelChoice.value || "auto");
   const defaultModel = resolveSelectedModel(form);
 
   if (defaultModel === null) {
@@ -359,6 +362,11 @@ async function runQuickConfigure(form) {
     }
 
     wizardState.pendingQuickConfigVerification = true;
+    wizardState.pendingQuickConfigDetails = {
+      provider: getProviderLabel(provider),
+      modelMode: getModelMode(modelChoice),
+      model: defaultModel || ""
+    };
     wizardState.configStatus = "待验证";
     updateStatusCard(configStatus, "待验证", "warning");
     updateLastAction("配置完成，正在验证");
@@ -389,14 +397,19 @@ async function runVerifyStep(options = {}) {
   ]);
 
   try {
+    await loadGuiConfigState();
     const report = await window.openClawInstaller.runVerify();
     wizardState.lastVerifyReport = report;
     const verifySummary = syncVerifyStatus(report, {
-      confirmConfig: options.confirmConfig === true || wizardState.pendingQuickConfigVerification === true
+      confirmConfig: options.confirmConfig === true || wizardState.pendingQuickConfigVerification === true || hasGuiConfigState()
     });
 
     if (report.ok && verifySummary.confirmedConfigured) {
+      if (wizardState.pendingQuickConfigVerification) {
+        await persistGuiConfigState();
+      }
       wizardState.pendingQuickConfigVerification = false;
+      wizardState.pendingQuickConfigDetails = null;
       wizardState.verifyStatus = "通过";
       updateStatusCard(configStatus, "已配置", "pass");
       updateLastAction("验证完成");
@@ -405,6 +418,7 @@ async function runVerifyStep(options = {}) {
       addAction("下一步：打开控制台", () => goToStep(4), "primary");
     } else if (report.ok) {
       wizardState.pendingQuickConfigVerification = false;
+      wizardState.pendingQuickConfigDetails = null;
       wizardState.verifyStatus = "未确认";
       updateLastAction(verifySummary.hasConfigPath ? "待验证" : "待配置");
       renderCheckReport(
@@ -460,7 +474,8 @@ async function runUpdateStep() {
     await refreshVersionInfo({ renderHome: false });
     const report = await window.openClawInstaller.runVerify();
     wizardState.lastVerifyReport = report;
-    const verifySummary = syncVerifyStatus(report, { confirmConfig: false });
+    await loadGuiConfigState();
+    const verifySummary = syncVerifyStatus(report, { confirmConfig: hasGuiConfigState() });
 
     if (report.ok && verifySummary.confirmedConfigured) {
       updateLastAction("更新完成");
@@ -638,6 +653,30 @@ function getProviderPlaceholder(provider) {
   };
 
   return placeholders[provider] || "请粘贴服务商 API Key";
+}
+
+function getProviderLabel(provider) {
+  const labels = {
+    openrouter: "OpenRouter",
+    deepseek: "DeepSeek",
+    openai: "OpenAI",
+    gemini: "Gemini",
+    qwen: "Qwen"
+  };
+
+  return labels[provider] || provider;
+}
+
+function getModelMode(modelChoice) {
+  if (modelChoice === "auto") {
+    return "auto";
+  }
+
+  if (modelChoice === "custom") {
+    return "custom";
+  }
+
+  return "selected";
 }
 
 const providerModels = {
@@ -1119,6 +1158,49 @@ function goToConfigure(mode) {
   goToStep(2);
 }
 
+async function loadGuiConfigState() {
+  if (!window.openClawInstaller || !window.openClawInstaller.readConfigState) {
+    wizardState.guiConfigState = null;
+    return null;
+  }
+
+  try {
+    const result = await window.openClawInstaller.readConfigState();
+    wizardState.guiConfigState = result && result.exists && result.state && result.state.configuredByGui === true
+      ? result.state
+      : null;
+    return wizardState.guiConfigState;
+  } catch (error) {
+    wizardState.guiConfigState = null;
+    return null;
+  }
+}
+
+function hasGuiConfigState() {
+  return Boolean(wizardState.guiConfigState && wizardState.guiConfigState.configuredByGui === true);
+}
+
+async function persistGuiConfigState() {
+  if (!window.openClawInstaller || !window.openClawInstaller.saveConfigState) {
+    return null;
+  }
+
+  const details = wizardState.pendingQuickConfigDetails || {};
+
+  try {
+    const result = await window.openClawInstaller.saveConfigState({
+      provider: details.provider || "",
+      modelMode: details.modelMode || "auto",
+      model: details.model || "",
+      openclawVersion: wizardState.openClawVersion || ""
+    });
+    wizardState.guiConfigState = result && result.state ? result.state : null;
+    return wizardState.guiConfigState;
+  } catch (error) {
+    return null;
+  }
+}
+
 function handleGoHome() {
   if (wizardState.isBusy || wizardState.isProbingStartup) {
     updateLastAction("当前任务进行中");
@@ -1156,6 +1238,7 @@ async function probeStartupState() {
   renderWizard();
 
   try {
+    await loadGuiConfigState();
     const report = await window.openClawInstaller.runVerify();
     wizardState.lastVerifyReport = report;
     const checks = Array.isArray(report.checks) ? report.checks : [];
@@ -1167,7 +1250,8 @@ async function probeStartupState() {
     }
 
     if (report.ok) {
-      const verifySummary = syncVerifyStatus(report, { confirmConfig: false });
+      await loadGuiConfigState();
+      const verifySummary = syncVerifyStatus(report, { confirmConfig: hasGuiConfigState() });
       wizardState.verifyStatus = verifySummary.confirmedConfigured ? "通过" : "未验证";
       updateLastAction(verifySummary.confirmedConfigured ? "已准备好" : verifySummary.hasConfigPath ? "待验证" : "待配置");
     } else if (commandCheck && !commandCheck.ok) {

@@ -83,6 +83,87 @@ function sanitizeSingleLine(output) {
     .filter(Boolean)[0] || "";
 }
 
+
+function getConfigStatePath() {
+  return path.join(os.homedir(), ".openclaw-installer", "config-state.json");
+}
+
+async function readConfigState() {
+  const statePath = getConfigStatePath();
+
+  try {
+    const content = await fs.readFile(statePath, "utf8");
+    const state = JSON.parse(content);
+
+    return {
+      success: true,
+      ok: true,
+      exists: true,
+      statePath,
+      state: sanitizeConfigState(state)
+    };
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      return {
+        success: true,
+        ok: true,
+        exists: false,
+        statePath,
+        state: null
+      };
+    }
+
+    return {
+      success: false,
+      ok: false,
+      exists: false,
+      statePath,
+      state: null,
+      message: "无法读取安装器配置状态。"
+    };
+  }
+}
+
+async function saveConfigState(input = {}) {
+  const statePath = getConfigStatePath();
+  const state = sanitizeConfigState({
+    configuredByGui: true,
+    configuredAt: new Date().toISOString(),
+    provider: input.provider,
+    modelMode: input.modelMode,
+    model: input.model,
+    openclawVersion: input.openclawVersion
+  });
+
+  await fs.mkdir(path.dirname(statePath), { recursive: true });
+  await fs.writeFile(statePath, JSON.stringify(state, null, 2) + "\n", "utf8");
+
+  return {
+    success: true,
+    ok: true,
+    statePath,
+    state
+  };
+}
+
+function sanitizeConfigState(input = {}) {
+  return {
+    configuredByGui: input.configuredByGui === true,
+    configuredAt: typeof input.configuredAt === "string" ? input.configuredAt : "",
+    provider: sanitizeStateText(input.provider, 80),
+    modelMode: sanitizeStateText(input.modelMode, 40),
+    model: sanitizeStateText(input.model, 120),
+    openclawVersion: sanitizeStateText(input.openclawVersion, 160)
+  };
+}
+
+function sanitizeStateText(value, maxLength) {
+  return String(value || "")
+    .replace(/[\r\n]/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
 function compareVersions(current, latest) {
   const currentParts = extractVersionParts(current);
   const latestParts = extractVersionParts(latest);
@@ -363,6 +444,8 @@ module.exports = {
   checkConfigureDoneFlag,
   openDashboard,
   openLogsDirectory,
+  readConfigState,
+  saveConfigState,
   runConfigure,
   runDoctor,
   checkOpenClawVersion,

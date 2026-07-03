@@ -59,6 +59,14 @@ ipcMain.handle("quick-configure:run", async (event, options) => {
   return installerService.runQuickConfigure(options || {});
 });
 
+ipcMain.handle("config-state:read", async () => {
+  return installerService.readConfigState();
+});
+
+ipcMain.handle("config-state:save", async (event, state) => {
+  return installerService.saveConfigState(state || {});
+});
+
 ipcMain.handle("verify:run", async () => {
   return installerService.runVerify(loadConfig());
 });
