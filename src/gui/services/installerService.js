@@ -364,7 +364,7 @@ async function openDashboard() {
   }
 
   try {
-    await runDetachedCommand("openclaw", ["dashboard"]);
+    await runDetachedCommand("openclaw", ["dashboard", "--yes"]);
     return {
       success: true,
       ok: true,

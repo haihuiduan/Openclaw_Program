@@ -164,6 +164,11 @@ function syncConsoleStatus() {
     return;
   }
 
+  if (wizardState.dashboardStatus === "starting") {
+    updateStatusCard(consoleStatus, "启动中", "running");
+    return;
+  }
+
   if (wizardState.dashboardStatus === "failed") {
     updateStatusCard(consoleStatus, "未运行", "warning");
     return;
@@ -643,7 +648,11 @@ async function runUpdateStep() {
 
 async function openDashboard(button) {
   setBusy(true);
-  updateLastAction("正在打开控制台");
+  wizardState.dashboardStatus = "starting";
+  wizardState.dashboardMessage = "正在启动 OpenClaw 控制台…";
+  updateLastAction("正在启动控制台");
+  syncConsoleStatus();
+  renderDashboardFeedback();
 
   try {
     const result = await window.openClawInstaller.openDashboard();
@@ -1389,6 +1398,10 @@ function createUsageCard() {
 }
 
 function appendDashboardNotice(card) {
+  if (wizardState.dashboardStatus === "starting") {
+    card.appendChild(createNotice(wizardState.dashboardMessage || "正在启动 OpenClaw 控制台…", "info"));
+  }
+
   if (wizardState.dashboardStatus === "opened") {
     card.appendChild(createNotice(wizardState.dashboardMessage || "已尝试启动 OpenClaw 控制台，请在浏览器中继续使用。", "pass"));
   }
