@@ -14,59 +14,44 @@
           <h1>OpenClaw Installer</h1>
           <p class="subtitle">macOS OpenClaw 一键安装与配置助手</p>
         </div>
-        <div class="status-pill" id="appStage">CLI 核心已接入</div>
+        <div class="header-actions">
+          <button type="button" class="home-button" id="homeButton">首页</button>
+          <div class="status-pill" id="appStage">CLI 核心已接入</div>
+        </div>
       </header>
 
-      <section class="status-overview" aria-labelledby="statusTitle">
+      <div class="compact-status-bar" aria-label="当前状态">
+        <span class="status-item status-neutral">
+          <span class="status-label">环境</span>
+          <strong id="environmentStatus">未检测</strong>
+        </span>
+        <span class="status-separator">·</span>
+        <span class="status-item status-neutral">
+          <span class="status-label">OpenClaw</span>
+          <strong id="openClawStatus">未知</strong>
+        </span>
+        <span class="status-separator">·</span>
+        <span class="status-item status-neutral">
+          <span class="status-label">配置</span>
+          <strong id="configStatus">待配置</strong>
+        </span>
+        <span class="status-separator">·</span>
+        <span class="status-item status-neutral">
+          <span class="status-label">最近</span>
+          <strong id="lastAction">尚未操作</strong>
+        </span>
+      </div>
+
+      <section class="wizard-panel" aria-labelledby="wizardTitle">
         <div class="section-heading">
-          <h2 id="statusTitle">当前状态概览</h2>
-          <p>用于快速了解环境、安装、配置和验证状态。配置是否可用请以“验证配置”结果为准。</p>
+          <h2 id="wizardTitle">安装向导</h2>
+          <p>按步骤完成检测、安装、配置、验证和打开控制台。高级配置和问题排查放在下方小入口。</p>
         </div>
 
-        <div class="status-grid">
-          <div class="status-item">
-            <span class="status-label">环境检测</span>
-            <strong id="environmentStatus">未检测</strong>
-          </div>
-          <div class="status-item">
-            <span class="status-label">OpenClaw</span>
-            <strong id="openClawStatus">未知</strong>
-          </div>
-          <div class="status-item">
-            <span class="status-label">配置状态</span>
-            <strong id="configStatus">待配置</strong>
-          </div>
-          <div class="status-item">
-            <span class="status-label">最近操作</span>
-            <strong id="lastAction">尚未操作</strong>
-          </div>
-        </div>
-      </section>
-
-      <section class="action-panel" aria-labelledby="actionsTitle">
-        <div class="section-heading">
-          <h2 id="actionsTitle">操作</h2>
-          <p>推荐流程：开始检测 → 一键安装 → 配置引导 → 验证配置 → 打开控制台。<br />一键安装会先自动检测环境，再继续安装；如果失败，可点击“问题排查”查看安装记录。</p>
-        </div>
-
-        <div class="button-grid">
-          <button type="button" data-action="开始检测" data-module="doctor">开始检测</button>
-          <button type="button" data-action="一键安装" data-module="install">一键安装</button>
-          <button type="button" data-action="配置引导" data-module="configure">配置引导</button>
-          <button type="button" data-action="验证配置" data-module="verify">验证配置</button>
-          <button type="button" data-action="打开控制台" data-module="dashboard">打开控制台</button>
-          <button type="button" data-action="问题排查" data-module="logs">问题排查</button>
-        </div>
-      </section>
-
-      <section class="output-panel" aria-labelledby="outputTitle">
-        <div class="section-heading">
-          <h2 id="outputTitle">输出日志</h2>
-          <p>这里将显示命令过程、成功信息、warning、失败原因和下一步建议。</p>
-        </div>
-        <div id="outputLog" class="output-log is-loading" aria-live="polite">OpenClaw Installer 已启动。
-推荐流程：开始检测 → 一键安装 → 配置引导 → 验证配置 → 打开控制台。
-一键安装会自动完成前置环境检测，不需要强制先点“开始检测”。</div>
+        <div id="wizardProgress" class="wizard-progress" aria-label="安装步骤进度"></div>
+        <div id="wizardCard" class="wizard-card" aria-live="polite"></div>
+        <div id="wizardActions" class="wizard-actions"></div>
+        <div id="wizardUtilities" class="wizard-utilities"></div>
       </section>
 
       <footer class="app-footer">

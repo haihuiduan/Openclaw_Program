@@ -20,6 +20,17 @@ module.exports = {
         ? "检测到 OpenClaw 已安装，当前版本：" + existing.version
         : "检测到 OpenClaw 已安装";
 
+      if (ctx.config && ctx.config.forceInstall) {
+        return {
+          success: true,
+          message: installedMessage + "，将继续通过官方安装脚本检查更新",
+          data: {
+            existingOpenClaw: existing,
+            installedMessage
+          }
+        };
+      }
+
       return {
         success: true,
         message: installedMessage,

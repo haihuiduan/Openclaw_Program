@@ -24,6 +24,96 @@ function runSetup(configOrProgress, maybeOnProgress) {
   return runNamedWorkflow("setup", configOrProgress, maybeOnProgress);
 }
 
+function runUpdate(configOrProgress, maybeOnProgress) {
+  const config = typeof configOrProgress === "function" ? {} : configOrProgress || {};
+  const onProgress = typeof configOrProgress === "function" ? configOrProgress : maybeOnProgress;
+
+  return runNamedWorkflow("install", {
+    ...config,
+    forceInstall: true
+  }, onProgress);
+}
+
+async function checkOpenClawVersion() {
+  const installed = await commandExists("openclaw");
+
+  if (!installed) {
+    return {
+      installed: false,
+      currentVersion: null,
+      latestVersion: null,
+      updateAvailable: false,
+      canCheckLatest: false,
+      message: "未检测到 OpenClaw。"
+    };
+  }
+
+  const currentResult = await runCommand("openclaw", ["--version"], {
+    allowFailure: true,
+    timeoutMs: 5000
+  });
+  const currentText = sanitizeSingleLine(currentResult.stdout + currentResult.stderr);
+  const currentVersion = currentResult.code === 0 && !currentResult.timedOut ? currentText : null;
+
+  const latestResult = await runCommand("npm", ["view", "openclaw", "version"], {
+    allowFailure: true,
+    timeoutMs: 6000
+  });
+  const latestVersion = latestResult.code === 0 && !latestResult.timedOut
+    ? sanitizeSingleLine(latestResult.stdout + latestResult.stderr)
+    : null;
+  const updateAvailable = Boolean(currentVersion && latestVersion && compareVersions(currentVersion, latestVersion) < 0);
+
+  return {
+    installed: true,
+    currentVersion,
+    latestVersion,
+    updateAvailable,
+    canCheckLatest: Boolean(latestVersion),
+    message: latestVersion
+      ? (updateAvailable ? "检测到 OpenClaw 有新版本。" : "OpenClaw 已是最新版本。")
+      : "暂时无法检查最新版本。"
+  };
+}
+
+function sanitizeSingleLine(output) {
+  return String(output || "")
+    .trim()
+    .split("\n")
+    .filter(Boolean)[0] || "";
+}
+
+function compareVersions(current, latest) {
+  const currentParts = extractVersionParts(current);
+  const latestParts = extractVersionParts(latest);
+
+  if (!currentParts.length || !latestParts.length) {
+    return 0;
+  }
+
+  const length = Math.max(currentParts.length, latestParts.length);
+
+  for (let index = 0; index < length; index += 1) {
+    const left = currentParts[index] || 0;
+    const right = latestParts[index] || 0;
+
+    if (left < right) {
+      return -1;
+    }
+
+    if (left > right) {
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
+function extractVersionParts(text) {
+  const match = String(text || "").match(/d+(?:.d+){0,3}/);
+  return match ? match[0].split(".").map((part) => Number(part) || 0) : [];
+}
+
 async function runQuickConfigure(options = {}) {
   const apiKey = String(options.apiKey || "").trim();
 
@@ -233,8 +323,10 @@ module.exports = {
   openLogsDirectory,
   runConfigure,
   runDoctor,
+  checkOpenClawVersion,
   runQuickConfigure,
   runInstall,
+  runUpdate,
   runSetup,
   runVerify
 };

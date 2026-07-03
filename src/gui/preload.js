@@ -10,6 +10,12 @@ contextBridge.exposeInMainWorld("openClawInstaller", {
   runInstall() {
     return ipcRenderer.invoke("install:run");
   },
+  runUpdate() {
+    return ipcRenderer.invoke("update:run");
+  },
+  checkOpenClawVersion() {
+    return ipcRenderer.invoke("version:check");
+  },
   runSetup() {
     return ipcRenderer.invoke("setup:run");
   },

@@ -35,6 +35,16 @@ ipcMain.handle("install:run", async () => {
   });
 });
 
+ipcMain.handle("update:run", async () => {
+  return installerService.runUpdate(loadConfig(), (stepUpdate) => {
+    sendProgress("install:progress", stepUpdate);
+  });
+});
+
+ipcMain.handle("version:check", async () => {
+  return installerService.checkOpenClawVersion();
+});
+
 ipcMain.handle("setup:run", async () => {
   return installerService.runSetup(loadConfig(), (stepUpdate) => {
     sendProgress("setup:progress", stepUpdate);

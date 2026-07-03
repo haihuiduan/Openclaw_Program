@@ -69,6 +69,36 @@ h2 {
   font-size: 17px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.home-button {
+  min-height: 34px;
+  border: 1px solid #cfd6df;
+  border-radius: 999px;
+  padding: 0 12px;
+  color: #3c4654;
+  background: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.home-button:hover {
+  border-color: #9aa8ba;
+  background: #f5f7fa;
+}
+
+.home-button:disabled {
+  color: #9aa4b2;
+  background: #f1f4f8;
+  cursor: not-allowed;
+}
+
 .status-pill {
   flex: 0 0 auto;
   border: 1px solid #cfd6df;
@@ -80,9 +110,9 @@ h2 {
   font-weight: 700;
 }
 
-.status-overview,
 .action-panel,
-.output-panel {
+.output-panel,
+.wizard-panel {
   margin-bottom: 18px;
   border: 1px solid #d9dee6;
   border-radius: 8px;
@@ -99,56 +129,59 @@ h2 {
   line-height: 1.5;
 }
 
-.status-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.status-item {
-  min-height: 86px;
+.compact-status-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 12px;
   border: 1px solid #e1e5ec;
-  border-radius: 8px;
-  padding: 14px;
-  background: #fafbfc;
-}
-
-.status-label {
-  display: block;
-  margin-bottom: 10px;
-  color: #697386;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: #ffffff;
+  color: #596273;
   font-size: 13px;
 }
 
+.status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #596273;
+}
+
+.status-label {
+  color: #697386;
+  font-weight: 600;
+}
+
 .status-item strong {
-  display: block;
   color: #1f2937;
-  font-size: 18px;
+  font-size: 13px;
 }
 
-.status-item.status-pass {
-  border-color: #b9e2c0;
-  background: #f5fbf6;
+.status-separator {
+  color: #b0bac8;
 }
 
-.status-item.status-warning {
-  border-color: #f3d28f;
-  background: #fffaf0;
+.status-item.status-pass strong {
+  color: #186033;
 }
 
-.status-item.status-fail {
-  border-color: #efb7b7;
-  background: #fff6f6;
+.status-item.status-warning strong {
+  color: #715200;
 }
 
-.status-item.status-running {
-  border-color: #b9c9f0;
-  background: #f5f8ff;
+.status-item.status-fail strong {
+  color: #a72525;
 }
 
-.status-item.status-neutral {
-  border-color: #e1e5ec;
-  background: #fafbfc;
+.status-item.status-running strong {
+  color: #274a9f;
+}
+
+.status-item.status-neutral strong {
+  color: #1f2937;
 }
 
 .button-grid {
@@ -642,6 +675,103 @@ h2 {
   gap: 10px;
 }
 
+.version-info-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  border: 1px solid #e1e5ec;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fafbfc;
+}
+
+.version-info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: #596273;
+  font-size: 14px;
+}
+
+.version-info-row strong {
+  color: #1f2937;
+  text-align: right;
+}
+
+.wizard-progress {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.wizard-step {
+  border: 1px solid #e1e5ec;
+  border-radius: 8px;
+  padding: 9px;
+  background: #fafbfc;
+  color: #596273;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.wizard-step.active {
+  border-color: #b9c9f0;
+  background: #f5f8ff;
+  color: #274a9f;
+}
+
+.wizard-step.completed {
+  border-color: #b9e2c0;
+  background: #f5fbf6;
+  color: #186033;
+}
+
+.wizard-step-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  border-radius: 999px;
+  background: #e8edf5;
+  font-size: 12px;
+}
+
+.wizard-card {
+  margin-bottom: 12px;
+}
+
+.wizard-actions,
+.wizard-utilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.wizard-actions {
+  margin-bottom: 10px;
+}
+
+.wizard-utilities {
+  border-top: 1px solid #e1e5ec;
+  padding-top: 12px;
+}
+
+.link-button {
+  border: 0;
+  padding: 0;
+  color: #3867d6;
+  background: transparent;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
 .verify-actions {
   margin-bottom: 12px;
 }
@@ -689,13 +819,17 @@ h2 {
     display: block;
   }
 
-  .status-pill {
-    display: inline-block;
+  .header-actions {
     margin-top: 16px;
   }
 
-  .status-grid,
-  .button-grid {
+  .status-pill {
+    display: inline-block;
+  }
+
+  .compact-status-bar,
+  .button-grid,
+  .wizard-progress {
     grid-template-columns: 1fr;
   }
 }
