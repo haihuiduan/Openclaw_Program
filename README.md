@@ -1,102 +1,195 @@
-# OpenClaw Installer
+# OpenClaw 工具箱
 
 ## 项目简介
 
-OpenClaw Installer 是一个面向 macOS 用户的 OpenClaw 安装、配置引导与验证助手。它的目标是降低普通用户使用命令行安装 OpenClaw 的门槛，把环境检测、安装、官方配置向导和安装后验证整理成一套清晰的 CLI 流程。
+OpenClaw 工具箱是一个面向 macOS 用户的 OpenClaw 安装、配置与控制台管理工具。
 
-当前版本是 CLI 核心版，不是完整 GUI 产品。后续可以把这些核心能力复用到 Electron GUI 中，作为“一键安装”和“配置引导”的底层能力。
+项目目标是降低普通用户使用 OpenClaw 的门槛，把原本需要命令行完成的环境检测、OpenClaw 安装、API Key 配置、配置检查、控制台启动和问题排查，整理成一个更清晰的桌面工具。
+
+当前项目已经包含：
+
+- Electron GUI 桌面界面
+- OpenClaw 安装与环境检测流程
+- GUI 内 API Key 基础配置
+- OpenClaw 配置状态确认
+- OpenClaw Dashboard 启动与停止
+- 版本检测与更新入口
+- 问题排查和安装日志
+- CLI 底层命令能力
+
+本项目不会保存、展示或记录用户的 API Key。
 
 ## 当前版本状态
 
-项目阶段：v0.5 CLI 一键准备版
+项目阶段：GUI MVP 工具箱版
 
 npm 包版本：0.1.0
 
-已完成主流程：
+当前主流程：
 
-- doctor：环境和依赖检测。
-- install：通过 OpenClaw 官方 `install.sh` 安装 OpenClaw。
-- configure：启动 OpenClaw 官方配置向导。
-- verify：安装和配置后的基础验收。
-- setup：串联 doctor + install，并提示后续 configure + verify。
+```text
+未安装 OpenClaw：
+欢迎 → 准备 OpenClaw → 配置 API Key → 检查配置 → 打开控制台
 
-自动化测试当前覆盖 CLI 分发、doctor、install、configure、verify、setup、dry-run、失败分支和安装日志，当前共 53 个测试通过。
+已安装但未配置 API Key：
+配置 API Key → 检查配置 → 打开控制台
+
+已安装且已配置：
+OpenClaw 工具箱首页 → 启动控制台 / 停止控制台 / 更换 API Key
+```
+
+当前测试状态：
+
+```text
+tests 53
+pass 53
+fail 0
+```
 
 ## 功能列表
 
-### 环境检测 doctor
+### Electron GUI 桌面工具
 
-`doctor` 用于检测当前电脑是否具备安装和运行 OpenClaw 的基础条件，包括 Node.js、node、npm、git、操作系统、CPU 架构、OpenClaw 状态、npm 网络访问和目标安装目录。
+当前 GUI 是项目的主要使用入口，适合普通用户使用。
 
-doctor 只做检测，不安装、不下载、不写配置文件。
+GUI 主要能力包括：
 
-### 一键安装 install
+- 检测当前 Mac 是否满足运行 OpenClaw 的基础条件。
+- 安装或确认 OpenClaw。
+- 在界面内选择 AI 服务商并输入 API Key。
+- 检查 OpenClaw 配置状态。
+- 启动 OpenClaw Dashboard。
+- 停止 OpenClaw 后台控制台服务。
+- 更换 API Key。
+- 检查 OpenClaw 当前版本和最新版本。
+- 打开官方高级配置向导。
+- 打开问题排查日志目录。
+- 查看最近操作状态。
 
-`install` 会先运行环境检测，再检查系统中是否已经存在 `openclaw` 命令。如果已经安装，会跳过重复安装。
+### 准备 OpenClaw
 
-如果未安装，当前版本会使用 OpenClaw 官方安装脚本：
+“准备 OpenClaw”会自动完成：
+
+1. 检查 macOS、CPU 架构、Node.js、npm、Git、npm 网络访问和目标目录。
+2. 检查是否已经安装 OpenClaw。
+3. 未安装时下载并执行 OpenClaw 官方安装脚本。
+4. 安装完成后通过 `openclaw --version` 验证 OpenClaw 命令可用。
+
+如果已经安装 OpenClaw，则不会重复安装。
+
+### GUI 内配置 API Key
+
+GUI 支持在界面内完成基础 API Key 配置。
+
+当前支持的 AI 服务商包括：
+
+- OpenRouter
+- DeepSeek
+- OpenAI
+- Gemini
+- Qwen
+
+配置时，用户只需要：
+
+1. 选择 AI 服务商。
+2. 输入 API Key。
+3. 选择模型，默认可使用“自动推荐，适合首次使用”。
+4. 点击开始配置。
+
+本项目会调用 OpenClaw 官方 non-interactive onboarding 能力完成配置，不会自己写 OpenClaw 官方配置文件。
+
+本项目不会：
+
+- 保存 API Key。
+- 展示 API Key。
+- 记录 API Key。
+- 把 API Key 写入日志。
+- 保存完整 onboarding 命令。
+
+### 配置状态确认
+
+为了避免误判，项目不会只因为存在配置文件就认为 API Key 已配置。
+
+当前判断逻辑：
+
+- `openclaw` 命令存在，不等于 API Key 已配置。
+- `openclaw config file` 可用，不等于 API Key 已配置。
+- Dashboard 能打开，不等于模型一定可调用。
+
+只有当用户通过 GUI 快速配置成功，并且随后检查通过，才会在 GUI 中显示：
 
 ```text
-https://openclaw.ai/install.sh
+配置 已配置
 ```
 
-本项目不会直接执行 `curl | bash` 管道，而是先下载官方脚本到临时目录，再使用 bash 执行本地脚本，并通过 `openclaw --version` 验证安装结果。
+项目会在安装器自己的目录中保存一个非敏感状态文件：
 
-### 安装预演 dry-run
+```text
+~/.openclaw-installer/config-state.json
+```
 
-`install --dry-run` 用于预览安装流程。它只展示计划和只读检查，不下载脚本、不执行 bash、不创建目录、不修改系统。
+该文件只记录：
 
-### 官方配置向导 configure
+- 是否曾通过 GUI 配置成功
+- 配置时间
+- 服务商
+- 模型选择
+- OpenClaw 版本
 
-`configure` 用于启动 OpenClaw 官方配置流程，默认执行：
+该文件不会保存 API Key 或任何可还原 API Key 的内容。
+
+### 启动和停止控制台
+
+GUI 支持启动 OpenClaw Dashboard。
+
+启动控制台时，当前使用：
 
 ```bash
-openclaw onboard --install-daemon
+openclaw dashboard --yes
 ```
 
-`configure --reconfigure` 用于重新进入 OpenClaw 官方配置流程，执行：
+这样在 gateway 未运行时，可以自动确认启动 gateway，避免卡在交互提示：
 
-```bash
-openclaw configure
+```text
+Gateway is not running. Start it now? [Y/n]
 ```
 
-### 安装后验证 verify
+GUI 也支持停止控制台服务。
 
-`verify` 用于检查 OpenClaw 是否已经安装并基本可用。当前会检查：
+停止控制台不会：
 
-- 系统中是否存在 `openclaw` 命令。
-- `openclaw --version` 是否可用。
-- `openclaw config file` 是否可以读取官方配置文件路径。
+- 卸载 OpenClaw。
+- 删除 `~/.openclaw`。
+- 删除 API 配置。
+- 删除 `config-state.json`。
 
-如果 `openclaw config file` 暂时不可用，会作为警告提示，不会直接判定 OpenClaw 不可用。
+### 版本检测与更新
 
-当前 verify 只验证：
+GUI 会检测：
 
-- OpenClaw 命令是否存在。
-- OpenClaw 版本是否可读取。
-- OpenClaw 配置文件路径是否可读取。
+- 当前 OpenClaw 版本
+- 最新 OpenClaw 版本
+- 更新状态
 
-当前 verify 暂不验证：
+如果发现新版本，可以从“关于本工具”中触发更新。
 
-- API Key 是否有效。
-- 模型是否可调用。
-- Gateway 是否运行。
-- daemon 是否正常。
-- 一次真实 Prompt 请求是否成功。
+更新不会删除用户的 OpenClaw 配置。
 
-### 一键准备 setup
+### 高级配置
 
-`setup` 是完整流程入口，适合未来 GUI 的“一键开始”按钮复用。当前默认流程是：
+普通用户通常不需要进入高级配置。
 
-1. 运行 doctor。
-2. doctor 通过后运行 install。
-3. install 成功或检测到已安装后，提示用户继续运行 configure 和 verify。
+高级入口包括：
 
-第一版 setup 默认不会自动执行 configure，因为官方配置向导可能需要用户输入 API Key。
+- 官方配置向导
+- 重新检查环境
+- 问题排查
 
-### 安装日志
+官方配置向导适合需要配置 Skills、Hooks、Web search、Channel、Gateway 等高级功能的用户。
 
-正式 `install` 会写入安装日志，方便安装失败时排查问题。dry-run 不写日志。
+### 问题排查和安装日志
+
+安装和部分运行流程会写入日志，便于排查问题。
 
 日志目录：
 
@@ -104,11 +197,11 @@ openclaw configure
 ~/.openclaw-installer/logs/
 ```
 
-### 自动化测试
+GUI 中的“问题排查”入口会打开该目录。
 
-项目使用 Node.js 原生 test runner，当前测试覆盖核心命令、dry-run、失败分支、安装日志和流程编排。
+日志不会记录 API Key。
 
-## 安装方式
+## 安装依赖
 
 开发阶段先安装依赖：
 
@@ -116,24 +209,30 @@ openclaw configure
 npm install
 ```
 
-如果需要在本机开发时使用 `openclaw-installer` 命令，可以执行：
+如果 Electron 下载较慢，可以使用国内镜像：
 
 ```bash
-npm link
-openclaw-installer doctor
-openclaw-installer setup
+export ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+npm install
 ```
 
-`npm link` 是开发阶段的本地链接方式，不代表已经发布到 npm。
+## 启动 GUI
 
-## 使用方式
-
-常用开发命令：
+开发阶段启动 Electron GUI：
 
 ```bash
-npm run doctor
-npm test
+npm run gui
 ```
+
+如果遇到 `ELECTRON_RUN_AS_NODE` 相关问题，可以使用：
+
+```bash
+env -u ELECTRON_RUN_AS_NODE npm run gui
+```
+
+## CLI 使用方式
+
+除了 GUI，项目仍保留 CLI 底层能力。
 
 直接通过 Node.js 运行：
 
@@ -152,29 +251,17 @@ node bin/cli.js help
 node bin/cli.js version
 ```
 
-如果已经执行过 `npm link`，也可以使用：
+如果需要在本机开发时使用 `openclaw-installer` 命令，可以执行：
 
 ```bash
+npm link
 openclaw-installer doctor
 openclaw-installer setup
 ```
 
-## 推荐使用流程
+`npm link` 是开发阶段的本地链接方式，不代表已经发布到 npm。
 
-推荐普通用户按这个顺序使用：
-
-1. `node bin/cli.js setup`
-2. `node bin/cli.js configure`
-3. `node bin/cli.js verify`
-
-如果希望分步执行：
-
-1. `node bin/cli.js doctor`
-2. `node bin/cli.js install`
-3. `node bin/cli.js configure`
-4. `node bin/cli.js verify`
-
-## 命令说明
+## CLI 命令说明
 
 | 命令 | 作用 |
 | --- | --- |
@@ -191,24 +278,6 @@ openclaw-installer setup
 | `openclaw-installer help` | 查看帮助信息 |
 | `openclaw-installer version` | 查看当前安装助手版本 |
 
-## 安装日志
-
-正式执行 `install` 时，安装日志会写入：
-
-```text
-~/.openclaw-installer/logs/
-```
-
-日志内容包括安装开始时间、平台信息、Node.js 版本、目标目录、doctor 检测摘要、OpenClaw 已安装检测结果、官方脚本下载结果、bash 执行输出摘要、`openclaw --version` 验证结果，以及最终成功或失败结论。
-
-`install --dry-run` 不写日志文件。
-
-## 配置说明
-
-本项目不直接保存 API Key，不自己写 OpenClaw 的官方配置文件，也不自己维护 Provider、Model、Base URL 等配置。
-
-API Key、模型服务商、模型名称等配置交给 OpenClaw 官方 onboarding/configure 流程处理。本项目的 `configure` 命令只是启动官方流程，方便用户和未来 GUI 调用。
-
 ## 测试
 
 运行测试：
@@ -219,58 +288,92 @@ npm test
 
 当前测试覆盖：
 
-- CLI 命令分发。
-- doctor 环境检测。
-- install 安装流程、dry-run、失败分支和安装日志。
-- configure 官方配置流程封装。
-- verify 安装后基础验收。
-- setup 完整流程编排。
-- 用户可见中文错误提示。
-- 敏感信息不直接输出到终端。
+- CLI 命令分发
+- doctor 环境检测
+- install 安装流程、dry-run、失败分支和安装日志
+- configure 官方配置流程封装
+- verify 安装后基础验收
+- setup 完整流程编排
+- workflow runtime
+- GUI 服务层部分逻辑
+- 中文错误提示
+- 敏感信息不直接输出到终端
+
+也可以对关键文件做语法检查：
+
+```bash
+node --check src/gui/renderer/renderer.js
+node --check src/gui/services/installerService.js
+node --check src/gui/main.js
+node --check src/gui/preload.js
+```
 
 ## 项目结构
 
 ```text
-bin/cli.js                    CLI 可执行入口
-src/cli                       命令解析和终端输出层
-src/cli/presenters            中文输出格式化
-src/core/doctor               环境和依赖检测
-src/core/installer            安装计划、安装执行和安装日志接入
-src/core/configure            OpenClaw 官方配置向导封装
-src/core/verify               安装后基础验收
-src/core/setup                doctor + install 的流程编排
-src/config                    默认配置和运行时配置合并
-src/utils                     通用工具
-src/utils/shell               系统命令执行封装
-tests                         自动化测试
+bin/cli.js                         CLI 可执行入口
+
+src/cli                            命令解析和终端输出层
+src/cli/presenters                 中文输出格式化
+
+src/core/doctor                    环境和依赖检测
+src/core/installer                 安装计划、安装执行和安装日志接入
+src/core/configure                 OpenClaw 官方配置向导封装
+src/core/verify                    安装后基础验收
+src/core/setup                     doctor + install 的流程编排
+
+src/core/workflow                  安装 workflow 引擎、运行时和步骤
+src/core/workflow/steps            环境检测、下载脚本、执行脚本、验证安装等步骤
+
+src/gui/main.js                    Electron 主进程
+src/gui/preload.js                 Electron preload 安全桥接
+src/gui/services/installerService.js GUI 服务层
+src/gui/renderer                   Electron 前端页面、样式和交互逻辑
+
+src/config                         默认配置和运行时配置合并
+src/utils                          通用工具
+src/utils/shell                    系统命令执行封装
+
+docs                               项目文档
+tests                              自动化测试
 ```
 
 ## 当前限制
 
-- 当前是 CLI 核心版，不是 GUI 桌面应用。
+- 当前仍处于 GUI MVP 阶段，尚未打包成正式 macOS App 或 DMG。
 - 真实安装依赖 OpenClaw 官方 `install.sh`。
 - 尚未在大量干净 macOS 机器上验证。
-- 目前没有 repair 自动修复命令。
-- 目前没有 update 更新命令。
-- 目前没有 GUI 桌面应用。
-- 目前没有角色市场、场景模板等增强功能。
-- setup 默认不会自动执行 configure，因为配置流程可能需要用户手动输入 API Key。
+- 当前不会自动安装 Node.js、npm、Git 等系统级依赖，只会检测并提示。
+- 当前不会自动修改用户 PATH。
+- 当前不会自动安装 Homebrew。
+- 当前不会保存 API Key。
+- 当前配置检查仍以 OpenClaw 基础状态为主，不等同于真实模型请求成功。
+- 高级能力如 Skills、Hooks、Web search、Channel 等交给 OpenClaw 官方配置向导处理。
 
 ## 后续计划
 
-1. 增加 `repair` 自动修复能力。
-2. 增加 `update` 更新 OpenClaw。
-3. 开发 GUI 桌面应用。
-4. 在 GUI 中增加查看日志按钮。
-5. 增加 OpenClaw 启动、停止、状态管理。
-6. 增加面向国内用户的网络提示和排障建议。
-7. 增加场景模板和角色管理。
+1. 完成 macOS App 打包。
+2. 增加更完整的手动验收测试文档。
+3. 增强 OpenClaw 控制台运行状态检测。
+4. 增加更友好的网络异常和国内镜像提示。
+5. 增加可选的一键修复能力。
+6. 增加更新 OpenClaw 的稳定流程和回滚提示。
+7. 增加场景模板和角色管理能力。
+8. 在更多干净 macOS 环境中测试安装流程。
 
 ## 开发定位
 
-OpenClaw Installer 当前的核心价值，是把原本需要用户手动输入命令的 OpenClaw 安装、配置和验证过程封装成可复用的 CLI 流程。
+OpenClaw 工具箱当前的核心价值，是把 OpenClaw 的安装、配置和控制台启动过程封装成普通用户更容易理解的桌面工具。
 
-这套 CLI 核心既可以直接给开发者和早期用户使用，也可以作为后续 GUI 一键安装器的底层能力。
+CLI 能力作为底层基础，GUI 作为主要用户入口。
+
+项目优先保证：
+
+- 不保存用户 API Key。
+- 不擅自修改系统环境。
+- 尽量调用 OpenClaw 官方命令完成安装和配置。
+- 普通用户只看到必要步骤。
+- 高级能力放到高级入口中。
 
 ## License
 
