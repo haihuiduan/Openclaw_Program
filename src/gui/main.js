@@ -45,6 +45,10 @@ ipcMain.handle("configure:run", async () => {
   return installerService.runConfigure(loadConfig());
 });
 
+ipcMain.handle("quick-configure:run", async (event, options) => {
+  return installerService.runQuickConfigure(options || {});
+});
+
 ipcMain.handle("verify:run", async () => {
   return installerService.runVerify(loadConfig());
 });

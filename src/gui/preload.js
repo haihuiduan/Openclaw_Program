@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld("openClawInstaller", {
   runConfigure() {
     return ipcRenderer.invoke("configure:run");
   },
+  runQuickConfigure(options) {
+    return ipcRenderer.invoke("quick-configure:run", options);
+  },
   runVerify() {
     return ipcRenderer.invoke("verify:run");
   },

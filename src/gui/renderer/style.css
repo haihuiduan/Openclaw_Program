@@ -509,11 +509,53 @@ h2 {
   background: #f5f7fa;
 }
 
-.configure-guide-card {
+.configure-guide-card,
+.quick-config-form {
   border: 1px solid #d9dee6;
   border-radius: 8px;
   padding: 16px;
   background: #ffffff;
+}
+
+.quick-config-form {
+  margin-bottom: 12px;
+}
+
+.quick-config-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.quick-config-field span {
+  color: #3f4857;
+  font-weight: 700;
+}
+
+.quick-config-field input,
+.quick-config-field select {
+  min-height: 40px;
+  border: 1px solid #cfd6df;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #1f2937;
+  background: #ffffff;
+  font: inherit;
+}
+
+.quick-config-field input:focus,
+.quick-config-field select:focus {
+  outline: 2px solid #b9c9f0;
+  border-color: #3867d6;
+}
+
+.quick-config-note {
+  margin: 0 0 12px;
+  color: #596273;
+}
+
+.usage-guide-card {
+  margin: 12px 0;
 }
 
 .configure-guide-title {

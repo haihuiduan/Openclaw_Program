@@ -592,6 +592,7 @@ function renderVerifyReport(report) {
     actions.className = "configure-guide-actions verify-actions";
     actions.appendChild(createDashboardButton());
     outputLog.appendChild(actions);
+    appendUsageGuideCard();
   }
 
   for (const check of checks) {
@@ -666,10 +667,143 @@ async function handleOpenDashboard(button) {
       result.message || (result.ok ? "已尝试打开 OpenClaw Dashboard。请在浏览器中继续使用。" : "未检测到 OpenClaw，请先执行一键安装。"),
       result.ok ? "pass" : "fail"
     );
+
+    if (result.ok) {
+      appendUsageGuideCard();
+    }
+
     updateLastAction(result.ok ? "控制台已打开" : "控制台打开失败");
   } catch (error) {
     renderInfoCard("无法打开控制台", String(error && error.message ? error.message : error), "fail");
     updateLastAction("控制台打开失败");
+  } finally {
+    restoreButtonText(button);
+    button.disabled = false;
+  }
+}
+
+function createQuickConfigureForm() {
+  const form = document.createElement("form");
+  form.className = "quick-config-form";
+
+  const title = document.createElement("div");
+  title.className = "configure-guide-title";
+  title.textContent = "快速配置 OpenRouter";
+
+  const description = document.createElement("p");
+  description.className = "configure-guide-intro";
+  description.textContent = "适合已经准备好 OpenRouter API Key 的用户。配置过程不打开 Terminal，API Key 只会传给 OpenClaw 官方命令。";
+
+  const provider = createFormField("Provider", "select", "OpenRouter");
+  provider.input.disabled = true;
+  provider.input.innerHTML = '<option value="openrouter">OpenRouter</option>';
+
+  const apiKey = createFormField("API Key", "password", "");
+  apiKey.input.name = "apiKey";
+  apiKey.input.placeholder = "粘贴 OpenRouter API Key";
+  apiKey.input.autocomplete = "off";
+
+  const model = createFormField("默认模型", "text", "openrouter/auto");
+  model.input.name = "model";
+  model.input.placeholder = "openrouter/auto";
+
+  const note = document.createElement("p");
+  note.className = "quick-config-note";
+  note.textContent = "本工具不会展示、保存或写日志记录 API Key。默认模型后续也可以在 OpenClaw 中调整。";
+
+  const actions = document.createElement("div");
+  actions.className = "configure-guide-actions";
+
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.className = "inline-action-button";
+  submit.textContent = "开始快速配置";
+
+  actions.appendChild(submit);
+  form.append(title, description, provider.field, apiKey.field, model.field, note, actions);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await handleQuickConfigure(form, submit);
+  });
+
+  return form;
+}
+
+function createFormField(labelText, type, value) {
+  const field = document.createElement("label");
+  field.className = "quick-config-field";
+
+  const label = document.createElement("span");
+  label.textContent = labelText;
+
+  const input = document.createElement(type === "select" ? "select" : "input");
+
+  if (type !== "select") {
+    input.type = type;
+    input.value = value;
+  }
+
+  field.append(label, input);
+  return { field, input };
+}
+
+async function handleQuickConfigure(form, button) {
+  const apiKey = String(form.elements.apiKey.value || "").trim();
+  const model = String(form.elements.model.value || "openrouter/auto").trim();
+
+  if (!apiKey) {
+    renderInfoCard("需要 API Key", "请先输入 OpenRouter API Key。", "fail");
+    return;
+  }
+
+  setButtonBusy(button, "配置中...");
+  button.disabled = true;
+  updateLastAction("正在快速配置");
+  updateStatusCard(configStatus, "验证中", "running");
+  renderSimpleProgress({
+    title: "正在快速配置 OpenClaw...",
+    description: "正在调用 OpenClaw 官方非交互配置命令。API Key 不会显示在界面或日志中。",
+    steps: [
+      "检查 OpenClaw 命令",
+      "提交 OpenRouter 配置",
+      "安装或重启本地服务",
+      "验证配置结果"
+    ]
+  });
+
+  try {
+    const result = await window.openClawInstaller.runQuickConfigure({
+      provider: "openrouter",
+      apiKey,
+      model
+    });
+
+    form.elements.apiKey.value = "";
+
+    if (!result.ok) {
+      renderInfoCard("快速配置失败", result.message || "OpenClaw 官方配置命令执行失败。", "fail");
+      updateLastAction("快速配置失败");
+      updateStatusCard(configStatus, "配置异常", "fail");
+      return;
+    }
+
+    const verifyReport = await window.openClawInstaller.runVerify();
+    renderVerifyReport(verifyReport);
+    syncVerifyStatusOverview(verifyReport);
+
+    if (verifyReport.ok) {
+      appendInfoCard("快速配置完成", "配置完成，可以打开控制台。", "pass");
+      updateLastAction("快速配置完成");
+    } else {
+      appendInfoCard("配置已执行，验证未通过", "请查看验证结果，或使用下方备用配置引导重新配置。", "warning");
+      updateLastAction("快速配置需检查");
+    }
+  } catch (error) {
+    form.elements.apiKey.value = "";
+    renderInfoCard("快速配置失败", String(error && error.message ? error.message : error), "fail");
+    updateLastAction("快速配置失败");
+    updateStatusCard(configStatus, "配置异常", "fail");
   } finally {
     restoreButtonText(button);
     button.disabled = false;
@@ -746,6 +880,8 @@ function createTextBlock(titleText, lines) {
 function renderConfigureGuide() {
   outputLog.classList.remove("is-loading");
   outputLog.replaceChildren();
+
+  outputLog.appendChild(createQuickConfigureForm());
 
   const panel = document.createElement("div");
   panel.className = "configure-guide-card";
@@ -1088,10 +1224,7 @@ function showLoading(message) {
   outputLog.textContent = message;
 }
 
-function renderInfoCard(titleText, messageText, state = "") {
-  outputLog.classList.remove("is-loading");
-  outputLog.replaceChildren();
-
+function createInfoCard(titleText, messageText, state = "") {
   const panel = document.createElement("div");
   panel.className = "install-result" + (state ? " " + state : "");
 
@@ -1104,7 +1237,61 @@ function renderInfoCard(titleText, messageText, state = "") {
   message.textContent = messageText;
 
   panel.append(title, message);
-  outputLog.appendChild(panel);
+  return panel;
+}
+
+function appendInfoCard(titleText, messageText, state = "") {
+  outputLog.classList.remove("is-loading");
+  outputLog.appendChild(createInfoCard(titleText, messageText, state));
+}
+
+function createUsageGuideCard() {
+  const card = document.createElement("div");
+  card.className = "configure-guide-card usage-guide-card";
+
+  const title = document.createElement("div");
+  title.className = "configure-guide-title";
+  title.textContent = "OpenClaw 可以做什么？";
+
+  const intro = document.createElement("p");
+  intro.className = "configure-guide-intro";
+  intro.textContent = "OpenClaw 是一个本地运行的 AI agent。配置模型后，你可以通过 Dashboard 或聊天渠道与它交互。";
+
+  const list = document.createElement("ol");
+  list.className = "configure-guide-steps";
+
+  for (const text of [
+    "总结文件或资料：例如，帮我总结这个文件的重点。",
+    "整理任务和计划：例如，根据这些信息帮我列一个待办清单。",
+    "辅助写作：例如，帮我润色这段说明，改得更清楚。",
+    "项目和工作辅助：例如，帮我整理项目进度、生成日报、梳理问题。",
+    "后续开启工具能力：可以根据需要开启搜索、文件处理、聊天渠道和自动化能力。"
+  ]) {
+    const item = document.createElement("li");
+    item.textContent = text;
+    list.appendChild(item);
+  }
+
+  const next = document.createElement("p");
+  next.className = "configure-guide-intro";
+  next.textContent = "建议下一步：点击“打开控制台”，在浏览器中进入 OpenClaw Dashboard。";
+
+  card.append(title, intro, list, next);
+  return card;
+}
+
+function appendUsageGuideCard() {
+  if (outputLog.querySelector(".usage-guide-card")) {
+    return;
+  }
+
+  outputLog.appendChild(createUsageGuideCard());
+}
+
+function renderInfoCard(titleText, messageText, state = "") {
+  outputLog.classList.remove("is-loading");
+  outputLog.replaceChildren();
+  outputLog.appendChild(createInfoCard(titleText, messageText, state));
 }
 
 function setButtonBusy(button, text) {

@@ -24,6 +24,81 @@ function runSetup(configOrProgress, maybeOnProgress) {
   return runNamedWorkflow("setup", configOrProgress, maybeOnProgress);
 }
 
+async function runQuickConfigure(options = {}) {
+  const apiKey = String(options.apiKey || "").trim();
+
+  if (!apiKey) {
+    return {
+      success: false,
+      ok: false,
+      message: "请先输入 OpenRouter API Key。"
+    };
+  }
+
+  const installed = await commandExists("openclaw");
+
+  if (!installed) {
+    return {
+      success: false,
+      ok: false,
+      message: "未检测到 OpenClaw，请先执行一键安装。"
+    };
+  }
+
+  const args = [
+    "onboard",
+    "--non-interactive",
+    "--accept-risk",
+    "--flow",
+    "quickstart",
+    "--auth-choice",
+    "openrouter-api-key",
+    "--openrouter-api-key",
+    apiKey,
+    "--install-daemon",
+    "--skip-search",
+    "--skip-skills",
+    "--skip-hooks",
+    "--skip-channels",
+    "--skip-ui",
+    "--json"
+  ];
+
+  const result = await runCommand("openclaw", args, {
+    allowFailure: true
+  });
+
+  if (result.code !== 0) {
+    return {
+      success: false,
+      ok: false,
+      message: "OpenClaw 快速配置失败。错误摘要：" + sanitizeCommandOutput(result.stderr || result.stdout, [apiKey])
+    };
+  }
+
+  return {
+    success: true,
+    ok: true,
+    message: "OpenClaw 快速配置已完成，正在验证配置。"
+  };
+}
+
+function sanitizeCommandOutput(output, secrets = []) {
+  let text = String(output || "").trim();
+
+  for (const secret of secrets) {
+    if (secret) {
+      text = text.split(secret).join("[已隐藏]");
+    }
+  }
+
+  if (!text) {
+    return "官方命令未返回详细错误。";
+  }
+
+  return text.split("\n").slice(0, 4).join("\n").slice(0, 500);
+}
+
 async function runConfigure() {
   if (process.platform !== "darwin") {
     return {
@@ -158,6 +233,7 @@ module.exports = {
   openLogsDirectory,
   runConfigure,
   runDoctor,
+  runQuickConfigure,
   runInstall,
   runSetup,
   runVerify
