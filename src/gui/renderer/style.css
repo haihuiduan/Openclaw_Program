@@ -99,7 +99,12 @@ h2 {
   cursor: not-allowed;
 }
 
+.about-menu-wrapper {
+  position: relative;
+}
+
 .status-pill {
+  position: relative;
   flex: 0 0 auto;
   border: 1px solid #cfd6df;
   border-radius: 999px;
@@ -108,6 +113,105 @@ h2 {
   background: #ffffff;
   font-size: 13px;
   font-weight: 700;
+  cursor: pointer;
+}
+
+.status-pill.has-update::after {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #d92d20;
+  content: "";
+}
+
+.about-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 10;
+  width: 280px;
+  border: 1px solid #dfe5ee;
+  border-radius: 10px;
+  padding: 12px;
+  background: #ffffff;
+  box-shadow: 0 14px 36px rgba(21, 32, 48, 0.15);
+  color: #323b49;
+  font-size: 13px;
+}
+
+.about-menu-title {
+  margin-bottom: 9px;
+  color: #172033;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.about-menu-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  color: #687386;
+}
+
+.about-menu-row strong {
+  max-width: 155px;
+  color: #222b39;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.about-menu-actions,
+.about-menu-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.about-menu-button {
+  border: 1px solid #cfd8e6;
+  border-radius: 999px;
+  padding: 6px 9px;
+  color: #26364d;
+  background: #f8fafc;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.about-menu-button:hover {
+  border-color: #9fb2ce;
+  background: #eef4ff;
+}
+
+.about-menu-link {
+  border-color: transparent;
+  color: #52627a;
+  background: transparent;
+  padding-left: 0;
+}
+
+.about-technical {
+  margin-top: 9px;
+  border-top: 1px solid #edf1f6;
+  padding-top: 8px;
+  color: #7b8796;
+}
+
+.about-technical summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.about-technical-body {
+  margin-top: 6px;
 }
 
 .action-panel,
@@ -864,6 +968,20 @@ h2 {
 
 .configure-done-prompt .inline-action-button {
   margin-top: 10px;
+}
+
+.light-update-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  border: 1px solid #f4dca7;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fffaf0;
+  color: #5b4212;
+  font-size: 13px;
 }
 
 .install-steps {

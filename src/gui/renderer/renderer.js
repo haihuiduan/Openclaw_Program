@@ -7,6 +7,7 @@ const openClawStatus = document.querySelector("#openClawStatus");
 const configStatus = document.querySelector("#configStatus");
 const versionStatus = document.querySelector("#versionStatus");
 const appStage = document.querySelector("#appStage");
+const aboutMenu = document.querySelector("#aboutMenu");
 const homeButton = document.querySelector("#homeButton");
 const wizardProgress = document.querySelector("#wizardProgress");
 const wizardCard = document.querySelector("#wizardCard");
@@ -40,11 +41,16 @@ const wizardState = {
   dashboardStatus: "idle",
   dashboardMessage: "",
   isBusy: false,
-  recentActions: []
+  recentActions: [],
+  updateNoticeDismissed: false
 };
 
 if (window.openClawInstaller) {
   appStage.textContent = window.openClawInstaller.stage;
+}
+
+if (appStage) {
+  appStage.addEventListener("click", toggleAboutMenu);
 }
 
 if (homeButton) {
@@ -56,12 +62,16 @@ if (recentStatusButton) {
 }
 
 document.addEventListener("click", (event) => {
-  if (!recentStatusMenu || !recentStatusButton || recentStatusMenu.hidden) {
-    return;
+  if (recentStatusMenu && recentStatusButton && !recentStatusMenu.hidden) {
+    if (!recentStatusMenu.contains(event.target) && !recentStatusButton.contains(event.target)) {
+      closeRecentStatusMenu();
+    }
   }
 
-  if (!recentStatusMenu.contains(event.target) && !recentStatusButton.contains(event.target)) {
-    closeRecentStatusMenu();
+  if (aboutMenu && appStage && !aboutMenu.hidden) {
+    if (!aboutMenu.contains(event.target) && !appStage.contains(event.target)) {
+      closeAboutMenu();
+    }
   }
 });
 
@@ -151,6 +161,7 @@ function renderWelcomeStep() {
   if (isReadyToUse()) {
     const card = createCard("OpenClaw 已准备好", "你可以直接打开控制台开始使用，或更换 API Key。");
     card.appendChild(createNotice("OpenClaw 已安装，API Key 配置已确认。", "pass"));
+    appendUpdateNotice(card);
     appendDashboardNotice(card);
     appendVersionInfo(card);
     wizardCard.appendChild(card);
@@ -162,6 +173,7 @@ function renderWelcomeStep() {
 
   if (wizardState.installStatus === "已安装" && wizardState.configStatus === "待确认") {
     const card = createCard("需要确认配置", "检测到这台电脑上可能已有 OpenClaw 配置，但本工具还不能确认 API Key 是否可用。你可以检查现有配置，或重新配置 API Key。");
+    appendUpdateNotice(card);
     appendVersionInfo(card);
     wizardCard.appendChild(card);
     addAction("检查现有配置", () => runVerifyStep({ confirmConfig: false }), "primary");
@@ -174,6 +186,7 @@ function renderWelcomeStep() {
   if (wizardState.installStatus === "已安装") {
     const card = createCard("还差一步：配置 API Key", "已检测到 OpenClaw 已安装。请配置 AI 服务商 API Key 后开始使用。");
     card.appendChild(createNotice("如果你以前配置过，也可以检查现有配置。", "info"));
+    appendUpdateNotice(card);
     appendVersionInfo(card);
     wizardCard.appendChild(card);
     addAction("配置 API Key", () => goToConfigure("first"), "primary");
@@ -998,6 +1011,161 @@ function createNotice(message, state) {
   return notice;
 }
 
+function appendUpdateNotice(card) {
+  if (!wizardState.versionInfo || !wizardState.versionInfo.updateAvailable || wizardState.updateNoticeDismissed) {
+    return;
+  }
+
+  const notice = document.createElement("div");
+  notice.className = "light-update-notice";
+
+  const text = document.createElement("span");
+  text.textContent = "发现新版本。";
+
+  const update = document.createElement("button");
+  update.type = "button";
+  update.className = "link-button inline-link-action";
+  update.textContent = "立即更新";
+  update.addEventListener("click", runUpdateStep);
+
+  const later = document.createElement("button");
+  later.type = "button";
+  later.className = "link-button inline-link-action";
+  later.textContent = "稍后再说";
+  later.addEventListener("click", dismissUpdateNotice);
+
+  notice.append(text, update, later);
+  card.appendChild(notice);
+}
+
+function dismissUpdateNotice() {
+  wizardState.updateNoticeDismissed = true;
+  closeAboutMenu();
+  renderWizard();
+}
+
+function updateAboutIndicator() {
+  if (!appStage) {
+    return;
+  }
+
+  appStage.classList.toggle("has-update", Boolean(wizardState.versionInfo && wizardState.versionInfo.updateAvailable));
+}
+
+function toggleAboutMenu() {
+  if (!aboutMenu || !appStage) {
+    return;
+  }
+
+  const shouldOpen = aboutMenu.hidden;
+  aboutMenu.hidden = !shouldOpen;
+  appStage.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+
+  if (shouldOpen) {
+    renderAboutMenu();
+  }
+}
+
+function closeAboutMenu() {
+  if (!aboutMenu || !appStage) {
+    return;
+  }
+
+  aboutMenu.hidden = true;
+  appStage.setAttribute("aria-expanded", "false");
+}
+
+function renderAboutMenu() {
+  if (!aboutMenu) {
+    return;
+  }
+
+  aboutMenu.replaceChildren();
+
+  const version = wizardState.versionInfo || {};
+  const latestVersion = version.canCheckLatest ? version.latestVersion : "暂时无法检查";
+  const updateState = version.canCheckLatest
+    ? (version.updateAvailable ? "发现新版本" : "已是最新")
+    : "暂时无法检查";
+
+  const title = document.createElement("div");
+  title.className = "about-menu-title";
+  title.textContent = "OpenClaw 工具箱";
+  aboutMenu.appendChild(title);
+
+  aboutMenu.appendChild(createAboutRow("当前版本", version.currentVersion || wizardState.openClawVersion || "未知"));
+  aboutMenu.appendChild(createAboutRow("最新版本", latestVersion || "暂时无法检查"));
+  aboutMenu.appendChild(createAboutRow("更新状态", updateState));
+
+  const actions = document.createElement("div");
+  actions.className = "about-menu-actions";
+  actions.appendChild(createAboutButton("检查更新", checkUpdateFromAbout));
+
+  if (version.updateAvailable) {
+    actions.appendChild(createAboutButton("立即更新", () => {
+      closeAboutMenu();
+      runUpdateStep();
+    }));
+    actions.appendChild(createAboutButton("稍后再说", dismissUpdateNotice));
+  }
+
+  aboutMenu.appendChild(actions);
+
+  const links = document.createElement("div");
+  links.className = "about-menu-links";
+  links.appendChild(createAboutLink("问题排查", () => {
+    closeAboutMenu();
+    openLogs();
+  }));
+  aboutMenu.appendChild(links);
+
+  const technical = document.createElement("details");
+  technical.className = "about-technical";
+  const summary = document.createElement("summary");
+  summary.textContent = "技术信息";
+  const commands = document.createElement("div");
+  commands.className = "about-technical-body";
+  commands.appendChild(createAboutRow("安装助手命令", "openclaw-installer"));
+  commands.appendChild(createAboutRow("OpenClaw 命令", "openclaw"));
+  technical.append(summary, commands);
+  aboutMenu.appendChild(technical);
+}
+
+function createAboutRow(labelText, valueText) {
+  const row = document.createElement("div");
+  row.className = "about-menu-row";
+
+  const label = document.createElement("span");
+  label.textContent = labelText;
+
+  const value = document.createElement("strong");
+  value.textContent = valueText || "未知";
+
+  row.append(label, value);
+  return row;
+}
+
+function createAboutButton(label, handler) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "about-menu-button";
+  button.textContent = label;
+  button.addEventListener("click", handler);
+  return button;
+}
+
+function createAboutLink(label, handler) {
+  const button = createAboutButton(label, handler);
+  button.classList.add("about-menu-link");
+  return button;
+}
+
+async function checkUpdateFromAbout() {
+  updateLastAction("正在检查更新");
+  await refreshVersionInfo({ renderHome: true });
+  renderAboutMenu();
+}
+
 function appendVersionInfo(card) {
   if (wizardState.versionInfo) {
     const version = wizardState.versionInfo;
@@ -1171,6 +1339,9 @@ async function refreshVersionInfo(options = {}) {
       }
     }
 
+    updateAboutIndicator();
+    renderAboutMenu();
+
     if (options.renderHome && wizardState.currentStep === 0) {
       renderWizard();
     }
@@ -1186,6 +1357,8 @@ async function refreshVersionInfo(options = {}) {
       message: "暂时无法检查最新版本。"
     };
     updateStatusCard(versionStatus, wizardState.openClawVersion || "未知", wizardState.openClawVersion ? "warning" : "neutral");
+    updateAboutIndicator();
+    renderAboutMenu();
     return wizardState.versionInfo;
   }
 }
