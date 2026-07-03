@@ -1,5 +1,7 @@
 // Renderer：一页式安装向导。只通过 preload 暴露的安全 API 调用主进程能力。
 const lastAction = document.querySelector("#lastAction");
+const recentStatusButton = document.querySelector("#recentStatusButton");
+const recentStatusMenu = document.querySelector("#recentStatusMenu");
 const environmentStatus = document.querySelector("#environmentStatus");
 const openClawStatus = document.querySelector("#openClawStatus");
 const configStatus = document.querySelector("#configStatus");
@@ -37,7 +39,8 @@ const wizardState = {
   guiConfigState: null,
   dashboardStatus: "idle",
   dashboardMessage: "",
-  isBusy: false
+  isBusy: false,
+  recentActions: []
 };
 
 if (window.openClawInstaller) {
@@ -47,6 +50,20 @@ if (window.openClawInstaller) {
 if (homeButton) {
   homeButton.addEventListener("click", handleGoHome);
 }
+
+if (recentStatusButton) {
+  recentStatusButton.addEventListener("click", toggleRecentStatusMenu);
+}
+
+document.addEventListener("click", (event) => {
+  if (!recentStatusMenu || !recentStatusButton || recentStatusMenu.hidden) {
+    return;
+  }
+
+  if (!recentStatusMenu.contains(event.target) && !recentStatusButton.contains(event.target)) {
+    closeRecentStatusMenu();
+  }
+});
 
 renderWizard();
 probeStartupState();
@@ -311,7 +328,7 @@ async function runInstallStep() {
     syncInstallStatus(result);
 
     if (result.success) {
-      updateLastAction("安装完成");
+      updateLastAction("OpenClaw 已安装");
       renderResultCard("OpenClaw 已准备好", "OpenClaw 已安装完成，下一步请配置 API。", "pass");
       await refreshVersionInfo({ renderHome: false });
       addAction("下一步：配置 API Key", () => goToConfigure("first"), "primary");
@@ -384,7 +401,7 @@ async function runQuickConfigure(form) {
     };
     wizardState.configStatus = "待确认";
     updateStatusCard(configStatus, "待确认", "warning");
-    updateLastAction("配置完成，正在检查");
+    updateLastAction("配置完成");
     renderResultCard("配置已提交", "配置已完成，正在检查基础状态。", "pass");
     await runVerifyStep({ autoAdvance: true, confirmConfig: true });
   } catch (error) {
@@ -427,7 +444,7 @@ async function runVerifyStep(options = {}) {
       wizardState.pendingQuickConfigDetails = null;
       wizardState.verifyStatus = "通过";
       updateStatusCard(configStatus, "已配置", "pass");
-      updateLastAction("检查完成");
+      updateLastAction("检查配置通过");
       renderResultCard("配置已确认", "配置已确认，可以打开控制台。", "pass");
       await refreshVersionInfo({ renderHome: false });
       addAction("下一步：打开控制台", () => goToStep(4), "primary");
@@ -493,7 +510,7 @@ async function runUpdateStep() {
     const verifySummary = syncVerifyStatus(report, { confirmConfig: hasGuiConfigState() });
 
     if (report.ok && verifySummary.confirmedConfigured) {
-      updateLastAction("更新完成");
+      updateLastAction("OpenClaw 已更新");
       renderResultCard("OpenClaw 已更新完成", "OpenClaw 已更新完成。你可以继续打开控制台使用。", "pass");
       addAction("打开控制台", openDashboard, "primary");
       addAction("回到首页", handleGoHome, "secondary");
@@ -526,7 +543,7 @@ async function openDashboard(button) {
     if (result.ok) {
       wizardState.dashboardStatus = "opened";
       wizardState.dashboardMessage = result.message || "已尝试打开 OpenClaw 控制台。请在浏览器中继续使用。";
-      updateLastAction("控制台已打开");
+      updateLastAction("启动控制台");
     } else {
       wizardState.dashboardStatus = "failed";
       wizardState.dashboardMessage = result.message || "控制台打开失败，请稍后重试，或进入问题排查看安装记录。";
@@ -1418,7 +1435,78 @@ function updateStatusCard(element, value, state) {
 }
 
 function updateLastAction(value) {
-  lastAction.textContent = value;
+  const safeValue = sanitizeActionSummary(value);
+  lastAction.textContent = safeValue;
+  recordRecentAction(safeValue);
+}
+
+function sanitizeActionSummary(value) {
+  return String(value || "尚未操作")
+    .replace(/[\r\n]/g, " ")
+    .replace(/openclaw\s+onboard[^，。]*/gi, "配置流程")
+    .replace(/sk-[A-Za-z0-9_-]+/g, "[已隐藏]")
+    .trim()
+    .slice(0, 40) || "尚未操作";
+}
+
+function recordRecentAction(value) {
+  if (!value || value === "尚未操作") {
+    renderRecentStatusMenu();
+    return;
+  }
+
+  if (wizardState.recentActions[0] !== value) {
+    wizardState.recentActions.unshift(value);
+  }
+
+  wizardState.recentActions = wizardState.recentActions.slice(0, 5);
+  renderRecentStatusMenu();
+}
+
+function toggleRecentStatusMenu() {
+  if (!recentStatusMenu || !recentStatusButton) {
+    return;
+  }
+
+  const shouldOpen = recentStatusMenu.hidden;
+  recentStatusMenu.hidden = !shouldOpen;
+  recentStatusButton.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+
+  if (shouldOpen) {
+    renderRecentStatusMenu();
+  }
+}
+
+function closeRecentStatusMenu() {
+  if (!recentStatusMenu || !recentStatusButton) {
+    return;
+  }
+
+  recentStatusMenu.hidden = true;
+  recentStatusButton.setAttribute("aria-expanded", "false");
+}
+
+function renderRecentStatusMenu() {
+  if (!recentStatusMenu) {
+    return;
+  }
+
+  recentStatusMenu.replaceChildren();
+
+  if (!wizardState.recentActions.length) {
+    const empty = document.createElement("div");
+    empty.className = "recent-status-empty";
+    empty.textContent = "暂无最近操作";
+    recentStatusMenu.appendChild(empty);
+    return;
+  }
+
+  for (const action of wizardState.recentActions.slice(0, 5)) {
+    const item = document.createElement("div");
+    item.className = "recent-status-menu-item";
+    item.textContent = action;
+    recentStatusMenu.appendChild(item);
+  }
 }
 
 function createCheckCard(check) {

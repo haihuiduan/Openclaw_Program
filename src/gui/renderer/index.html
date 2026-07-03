@@ -21,7 +21,7 @@
       </header>
 
       <div class="compact-status-bar" aria-label="当前状态">
-        <span class="status-item status-neutral">
+        <span class="status-item status-neutral status-environment">
           <span class="status-label">环境</span>
           <strong id="environmentStatus">未检测</strong>
         </span>
@@ -41,9 +41,15 @@
           <strong id="versionStatus">未知</strong>
         </span>
         <span class="status-separator">·</span>
-        <span class="status-item status-neutral">
-          <span class="status-label">最近</span>
-          <strong id="lastAction">尚未操作</strong>
+        <span class="status-item status-neutral recent-status-item">
+          <button type="button" class="recent-status-button" id="recentStatusButton" aria-expanded="false">
+            <span class="status-label">最近</span>
+            <strong id="lastAction">尚未操作</strong>
+            <span class="recent-status-arrow">▼</span>
+          </button>
+          <div class="recent-status-menu" id="recentStatusMenu" hidden>
+            <div class="recent-status-empty">暂无最近操作</div>
+          </div>
         </span>
       </div>
 

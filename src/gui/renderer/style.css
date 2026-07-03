@@ -130,38 +130,47 @@ h2 {
 }
 
 .compact-status-bar {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 7px;
-  margin-bottom: 12px;
-  border: 1px solid #e1e5ec;
+  gap: 5px;
+  max-width: 100%;
+  margin-bottom: 10px;
+  border: 1px solid #edf0f5;
   border-radius: 999px;
-  padding: 8px 12px;
-  background: #ffffff;
-  color: #596273;
-  font-size: 13px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #6d7787;
+  font-size: 11px;
 }
 
 .status-item {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  color: #596273;
+  gap: 3px;
+  color: #6d7787;
+  line-height: 1.2;
+}
+
+.status-environment,
+.status-environment + .status-separator {
+  opacity: 0.58;
 }
 
 .status-label {
-  color: #697386;
-  font-weight: 600;
+  color: #7d8796;
+  font-weight: 500;
 }
 
 .status-item strong {
-  color: #1f2937;
-  font-size: 13px;
+  color: #293241;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .status-separator {
-  color: #b0bac8;
+  color: #ccd3de;
 }
 
 .status-item.status-pass strong {
@@ -182,6 +191,65 @@ h2 {
 
 .status-item.status-neutral strong {
   color: #1f2937;
+}
+
+.recent-status-item {
+  z-index: 4;
+}
+
+.recent-status-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.recent-status-button:hover strong,
+.recent-status-button:focus-visible strong {
+  color: #1f4fb8;
+}
+
+.recent-status-arrow {
+  color: #9aa5b5;
+  font-size: 9px;
+  line-height: 1;
+}
+
+.recent-status-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  min-width: 180px;
+  border: 1px solid #e1e6ef;
+  border-radius: 8px;
+  padding: 6px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(21, 32, 48, 0.12);
+  color: #394456;
+  font-size: 12px;
+}
+
+.recent-status-menu-item,
+.recent-status-empty {
+  padding: 6px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.recent-status-menu-item + .recent-status-menu-item {
+  margin-top: 2px;
+}
+
+.recent-status-menu-item:hover {
+  background: #f5f7fb;
+}
+
+.recent-status-empty {
+  color: #8993a3;
 }
 
 .button-grid {
