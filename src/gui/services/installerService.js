@@ -368,15 +368,46 @@ async function openDashboard() {
     return {
       success: true,
       ok: true,
-      message: "已尝试打开 OpenClaw Dashboard。请在浏览器中继续使用。"
+      message: "已尝试启动 OpenClaw 控制台，请在浏览器中继续使用。"
     };
   } catch (error) {
     return {
       success: false,
       ok: false,
-      message: "无法打开 OpenClaw Dashboard，请稍后手动运行：openclaw dashboard"
+      message: "控制台打开失败，请稍后重试，或进入问题排查看日志。"
     };
   }
+}
+
+async function stopDashboard() {
+  const installed = await commandExists("openclaw");
+
+  if (!installed) {
+    return {
+      success: false,
+      ok: false,
+      message: "未检测到 OpenClaw，请先执行一键安装。"
+    };
+  }
+
+  const result = await runCommand("openclaw", ["gateway", "stop"], {
+    allowFailure: true,
+    timeoutMs: 10000
+  });
+
+  if (result.code !== 0 || result.timedOut) {
+    return {
+      success: false,
+      ok: false,
+      message: "控制台停止失败，请稍后重试，或进入问题排查看日志。"
+    };
+  }
+
+  return {
+    success: true,
+    ok: true,
+    message: "已停止 OpenClaw 控制台。"
+  };
 }
 
 async function checkConfigureDoneFlag() {
@@ -443,6 +474,7 @@ function runNamedWorkflow(workflowName, configOrProgress, maybeOnProgress) {
 module.exports = {
   checkConfigureDoneFlag,
   openDashboard,
+  stopDashboard,
   openLogsDirectory,
   readConfigState,
   saveConfigState,

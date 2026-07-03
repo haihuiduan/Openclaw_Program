@@ -79,6 +79,10 @@ ipcMain.handle("dashboard:open", async () => {
   return installerService.openDashboard();
 });
 
+ipcMain.handle("dashboard:stop", async () => {
+  return installerService.stopDashboard();
+});
+
 ipcMain.handle("external:open", async (event, url) => {
   const allowedUrls = new Set([
     "https://nodejs.org/zh-cn/download"

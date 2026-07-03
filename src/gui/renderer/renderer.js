@@ -165,7 +165,7 @@ function renderWelcomeStep() {
     appendDashboardNotice(card);
     appendVersionInfo(card);
     wizardCard.appendChild(card);
-    addAction(getHomeDashboardButtonLabel(), openDashboard, "primary");
+    addConsoleActions();
     addAction("更换 API Key", () => goToConfigure("reconfigure"), "secondary");
     addUpdateActionIfNeeded();
     return;
@@ -282,7 +282,7 @@ function renderDashboardStep() {
   wizardCard.appendChild(card);
 
   addBackAction();
-  addAction(getDashboardButtonLabel(), openDashboard, "primary");
+  addConsoleActions();
 
   if (wizardState.dashboardStatus === "failed") {
     addAction("问题排查", openLogs, "secondary");
@@ -525,7 +525,7 @@ async function runUpdateStep() {
     if (report.ok && verifySummary.confirmedConfigured) {
       updateLastAction("OpenClaw 已更新");
       renderResultCard("OpenClaw 已更新完成", "OpenClaw 已更新完成。你可以继续打开控制台使用。", "pass");
-      addAction("打开控制台", openDashboard, "primary");
+      addConsoleActions();
       addAction("回到首页", handleGoHome, "secondary");
     } else if (report.ok) {
       updateLastAction("更新完成，待确认配置");
@@ -555,7 +555,7 @@ async function openDashboard(button) {
 
     if (result.ok) {
       wizardState.dashboardStatus = "opened";
-      wizardState.dashboardMessage = result.message || "已尝试打开 OpenClaw 控制台。请在浏览器中继续使用。";
+      wizardState.dashboardMessage = result.message || "已尝试启动 OpenClaw 控制台，请在浏览器中继续使用。";
       updateLastAction("启动控制台");
     } else {
       wizardState.dashboardStatus = "failed";
@@ -568,6 +568,34 @@ async function openDashboard(button) {
     wizardState.dashboardStatus = "failed";
     wizardState.dashboardMessage = getErrorMessage(error) || "控制台打开失败，请稍后重试，或进入问题排查看安装记录。";
     updateLastAction("控制台打开失败");
+    renderDashboardFeedback();
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function stopDashboard() {
+  setBusy(true);
+  updateLastAction("正在停止控制台");
+
+  try {
+    const result = await window.openClawInstaller.stopDashboard();
+
+    if (result.ok) {
+      wizardState.dashboardStatus = "stopped";
+      wizardState.dashboardMessage = result.message || "已停止 OpenClaw 控制台。";
+      updateLastAction("已停止控制台");
+    } else {
+      wizardState.dashboardStatus = "failed";
+      wizardState.dashboardMessage = result.message || "控制台停止失败，请稍后重试，或进入问题排查看日志。";
+      updateLastAction("控制台停止失败");
+    }
+
+    renderDashboardFeedback();
+  } catch (error) {
+    wizardState.dashboardStatus = "failed";
+    wizardState.dashboardMessage = getErrorMessage(error) || "控制台停止失败，请稍后重试，或进入问题排查看日志。";
+    updateLastAction("控制台停止失败");
     renderDashboardFeedback();
   } finally {
     setBusy(false);
@@ -1238,7 +1266,7 @@ function createUsageCard() {
 
 function appendDashboardNotice(card) {
   if (wizardState.dashboardStatus === "opened") {
-    card.appendChild(createNotice(wizardState.dashboardMessage || "已尝试打开 OpenClaw 控制台。请在浏览器中继续使用。", "pass"));
+    card.appendChild(createNotice(wizardState.dashboardMessage || "已尝试启动 OpenClaw 控制台，请在浏览器中继续使用。", "pass"));
   }
 
   if (wizardState.dashboardStatus === "failed") {
@@ -1247,15 +1275,7 @@ function appendDashboardNotice(card) {
 }
 
 function getDashboardButtonLabel() {
-  if (wizardState.dashboardStatus === "opened") {
-    return "再次打开控制台";
-  }
-
-  if (wizardState.dashboardStatus === "failed") {
-    return "重试打开控制台";
-  }
-
-  return "打开控制台";
+  return "启动控制台";
 }
 
 function renderDashboardFeedback() {
@@ -1295,6 +1315,11 @@ function renderUtilities() {
   logs.addEventListener("click", openLogs);
 
   wizardUtilities.append(advanced, doctor, logs);
+}
+
+function addConsoleActions() {
+  addAction("启动控制台", openDashboard, "primary");
+  addAction("停止控制台", stopDashboard, "secondary");
 }
 
 function addBackAction() {
@@ -1497,14 +1522,6 @@ function isToolboxHome() {
 }
 
 function getHomeDashboardButtonLabel() {
-  if (wizardState.dashboardStatus === "opened") {
-    return "再次打开控制台";
-  }
-
-  if (wizardState.dashboardStatus === "failed") {
-    return "重试打开控制台";
-  }
-
   return "启动控制台";
 }
 

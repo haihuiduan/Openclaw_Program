@@ -40,6 +40,9 @@ contextBridge.exposeInMainWorld("openClawInstaller", {
   openDashboard() {
     return ipcRenderer.invoke("dashboard:open");
   },
+  stopDashboard() {
+    return ipcRenderer.invoke("dashboard:stop");
+  },
   openLogsDirectory() {
     return ipcRenderer.invoke("logs:open");
   },
