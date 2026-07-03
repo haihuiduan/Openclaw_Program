@@ -4,98 +4,123 @@
 
 OpenClaw Installer 是一个面向 macOS 普通用户的 OpenClaw 安装、配置和验证助手。
 
-它的作用是把原本需要手动输入命令的流程，整理成更容易理解的图形界面操作：
+它把原本需要手动输入命令的流程整理成一个图形化向导：
 
-- 检查电脑环境是否满足要求
-- 安装 OpenClaw 本体
-- 打开 OpenClaw 官方配置向导
-- 验证 OpenClaw 是否已经可以基本使用
-- 引导用户打开 OpenClaw Dashboard 浏览器控制台
+- 准备 OpenClaw：自动检测环境，并安装或跳过已安装的 OpenClaw
+- 在 GUI 内配置 AI 服务商 API Key
+- 验证 OpenClaw 是否可以基本使用
+- 打开 OpenClaw Dashboard 浏览器控制台
 - 在遇到问题时查看安装记录
 
-本工具不会自己保存 API Key，也不会自己写 OpenClaw 的官方配置文件。API Key、模型服务商、默认模型等内容由 OpenClaw 官方配置向导处理。
+本工具不会保存、读取或上传 API Key，也不会自己写 OpenClaw 的官方配置文件。配置会通过 OpenClaw 官方命令完成。
 
 ## 2. 推荐使用流程
 
-建议第一次使用时按下面顺序操作：
+普通用户建议按向导顺序操作：
 
-1. 点击“开始检测”，确认当前电脑环境是否满足安装要求。
-2. 点击“一键安装”，安装 OpenClaw 本体。
-3. 点击“配置引导”，阅读 GUI 中显示的配置流程说明。
-4. 点击“打开官方配置向导”，在打开的 Terminal 中完成 OpenClaw 官方 onboarding。
-5. 配置完成后，回到本软件，点击“我已完成配置，立即验证”。
-6. 验证通过后，点击“打开 OpenClaw 控制台”，或手动运行 `openclaw dashboard`。
+1. 点击“开始”，进入一页式向导。
+2. 在“准备 OpenClaw”步骤点击“开始准备”。本步骤会自动检测 macOS、CPU 架构、Node.js、npm、Git，并安装或跳过已安装的 OpenClaw。
+3. 在“配置 API”步骤选择 AI 服务商，输入 API Key，可选填写默认模型。
+4. 点击“开始配置”。本工具会调用 OpenClaw 官方非交互配置命令，不会打开 Terminal。
+5. 配置完成后会自动进入验证步骤。
+6. 验证通过后，点击“打开 OpenClaw 控制台”。
 7. 如果安装或配置遇到问题，点击“问题排查”查看安装记录。
 
-GUI 主流程不再推荐普通用户使用“一键准备”。`setup` 能力仍保留在底层和 CLI 中，适合开发、测试或自动化场景；普通用户按上面的按钮顺序操作即可。
+如果你已经安装并配置过 OpenClaw，再次打开软件时首页会直接显示“打开控制台”和“更换 API Key”。不需要重新走完整安装流程。
 
-如果你不确定某一步该怎么选，优先选择默认项、Keep current、Skip for now 或 No。这样可以先完成基础配置，后续再打开 OpenClaw 自己调整。
+## 3. 准备 OpenClaw
 
-## 3. 配置引导中的推荐路线
+“准备 OpenClaw”已经合并了环境检测和安装流程。
 
-点击“配置引导”后，系统会显示推荐路线。点击“打开官方配置向导”后，Terminal 会运行 OpenClaw 官方 onboarding。你可能会看到下面这些步骤：
+它会自动完成：
 
-1. 安全确认：个人使用一般选择 Yes。
-2. Setup mode：第一次使用选择 QuickStart。
-3. Config handling：如果之前配置过，选择 Keep current values；第一次配置按默认继续。
-4. Model/auth provider：选择你的 API 来源，例如 OpenRouter、OpenAI、DeepSeek。
-5. Auth method：如果使用 OpenRouter，一般选择 OpenRouter API key。
-6. API Key：粘贴你自己的 Key，本工具不会保存。
-7. Default model：如果不懂，可以保持默认，例如 `openrouter/auto`。
-8. Channel：第一次体验建议选择 ClickClack。
-9. Web search：如果不清楚用途，可以先选择 Skip for now。
-10. Skills / Missing dependencies：如果不清楚用途，可以先选择 Skip for now。
-11. Optional API keys：不知道用途就选择 No。
-12. Hooks：如果不清楚用途，可以先选择 Skip for now。
-13. Gateway service：保持默认；如果已安装可以选择 Restart。
-14. Hatch your agent：普通用户建议选择 Hatch in Browser；如果进入 Terminal TUI，也可以之后使用 Dashboard。
-15. 完成后：回到 OpenClaw Installer，点击“我已完成配置，立即验证”。
+1. 检查 macOS、CPU 架构、Node.js、npm、Git。
+2. 检查是否已经安装 OpenClaw。
+3. 未安装时自动下载并执行 OpenClaw 官方安装脚本。
+4. 安装完成后验证 `openclaw` 命令是否可用。
 
-配置向导由 OpenClaw 官方命令完成，本工具只是帮你打开它，并在完成后引导你做验证。
+首次安装通常需要 2-10 分钟，取决于网络速度。请保持网络连接，不要关闭本窗口。
 
-## 4. Terminal TUI 和 Dashboard
+如果 OpenClaw 已经安装，本工具会跳过重复安装。首页也会显示当前版本、最新版本和更新状态。发现新版本时，可以点击“立即更新”。
 
-配置完成后，OpenClaw 可能会自动进入终端聊天界面。这个界面是官方 Terminal TUI，不是必须使用。
+## 4. 配置 API
 
-普通用户更推荐使用 Dashboard 浏览器控制台。验证配置通过后，可以点击 GUI 主操作区或验证结果中的“打开 OpenClaw 控制台”，也可以在 Terminal 中运行：
+配置 API 默认在 GUI 内完成，不需要打开 Terminal。
+
+当前支持选择：
+
+- OpenRouter
+- DeepSeek
+- OpenAI
+- Gemini
+- Qwen
+
+你需要输入对应服务商的 API Key。默认模型可以留空，表示使用 OpenClaw 官方默认值。
+
+本工具不会保存、展示或记录 API Key。API Key 只会作为参数传给 OpenClaw 官方命令：
+
+```text
+openclaw onboard --non-interactive ... --json
+```
+
+配置命令会跳过 Skills、Hooks、Web search、Channel 等高级功能，让普通用户先完成基础模型配置。
+
+## 5. 高级设置
+
+如果你需要配置聊天渠道、Web search、Skills、Hooks、Gateway 等扩展功能，可以点击“高级设置：官方完整配置向导”。
+
+高级配置会打开系统 Terminal，并运行 OpenClaw 官方完整 onboarding。它适合需要进一步设置 ClickClack、Slack、QQ Bot、飞书、搜索、技能和自动化钩子的用户。
+
+普通用户第一次使用时，可以先完成 GUI 内的基础 API 配置，后续需要扩展能力时再进入高级设置。
+
+## 6. Dashboard
+
+验证通过后，建议点击“打开 OpenClaw 控制台”。Dashboard 会在浏览器中打开，更适合普通用户继续使用 OpenClaw。
+
+也可以在 Terminal 中手动运行：
 
 ```text
 openclaw dashboard
 ```
 
-Dashboard 会在浏览器中打开，更适合查看状态和继续使用 OpenClaw。
+OpenClaw 可以帮助你：
 
-## 5. 常见问题
+- 和 AI agent 对话
+- 总结资料
+- 整理任务
+- 辅助写作
+- 后续连接更多工具和聊天渠道
 
-### 为什么会打开 Terminal？
+## 7. 问题排查
 
-OpenClaw 官方配置向导是交互式命令行程序，需要用户选择选项并输入 API Key。Electron GUI 后台不适合静默处理这种交互，所以本工具会打开系统 Terminal，让你直接使用官方向导。
-
-### API Key 会不会被本工具保存？
-
-不会。本工具不保存、不读取、不上传你的 API Key。API Key 由 OpenClaw 官方配置流程处理。
-
-### 安装时间较长怎么办？
-
-安装过程需要访问网络并执行 OpenClaw 官方安装脚本。如果等待时间较长，请先不要关闭软件。若安装失败，可以点击“问题排查”查看详细原因。
-
-### 配置完成后为什么还要验证？
-
-Terminal 中的配置完成，只表示官方向导已经结束。是否真的可用，还需要通过“验证配置”确认 OpenClaw 命令、版本和配置文件路径是否正常。
-
-### 日志在哪里？
-
-正式执行“一键安装”后，安装记录会写入：
+点击“问题排查”会打开安装记录目录：
 
 ```text
 ~/.openclaw-installer/logs/
 ```
 
-dry-run 或预演模式不会写日志。如果日志目录还不存在，说明你可能还没有执行过正式安装，或者安装尚未产生日志。
+如果安装或配置失败，请把最新的 `install-xxxx.log` 文件发给开发者排查。普通用户不需要自行理解日志内容。
 
-### 配置状态分别是什么意思？
+## 8. 常见问题
 
-- 待配置：还没有完成 OpenClaw 官方配置，或尚未检测到可用配置。
-- 等待验证：已经打开配置向导，但还没有通过本软件验证。
+### 为什么主流程不再单独显示“开始检测”？
+
+因为“准备 OpenClaw”已经包含环境检测。普通用户不需要先检测一次，再安装时又检测一次。
+
+### API Key 会不会被本工具保存？
+
+不会。本工具不保存、不读取、不上传 API Key，也不会把 API Key 写入本工具日志。
+
+### 为什么还有官方高级配置向导？
+
+GUI 内配置只做基础模型配置。Skills、Hooks、Web search、Channel、ClickClack、Slack、QQ Bot、飞书等扩展功能仍由 OpenClaw 官方完整 onboarding 处理。
+
+### 配置完成后为什么还要验证？
+
+验证用于确认 OpenClaw 命令、版本和配置文件路径可以读取。它暂时不验证 API Key 是否真实有效，也不发送真实模型请求。
+
+### 配置状态是什么意思？
+
+- 待配置：还没有检测到可用配置。
 - 已配置：验证时检测到 OpenClaw 基本可用，并且配置文件路径可读取。
-- 配置异常：验证失败，或配置状态不完整，需要重新检查配置流程。
+- 配置异常：验证失败，或配置状态不完整，需要重新配置或排查。

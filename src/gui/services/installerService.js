@@ -110,18 +110,55 @@ function compareVersions(current, latest) {
 }
 
 function extractVersionParts(text) {
-  const match = String(text || "").match(/d+(?:.d+){0,3}/);
+  const match = String(text || "").match(/\d+(?:\.\d+){0,3}/);
   return match ? match[0].split(".").map((part) => Number(part) || 0) : [];
+}
+
+function getProviderConfig(provider) {
+  const providers = {
+    openrouter: {
+      authChoice: "openrouter-api-key",
+      keyArg: "--openrouter-api-key"
+    },
+    deepseek: {
+      authChoice: "deepseek-api-key",
+      keyArg: "--deepseek-api-key"
+    },
+    openai: {
+      authChoice: "openai-api-key",
+      keyArg: "--openai-api-key"
+    },
+    gemini: {
+      authChoice: "gemini-api-key",
+      keyArg: "--gemini-api-key"
+    },
+    qwen: {
+      authChoice: "qwen-api-key",
+      keyArg: "--qwen-api-key"
+    }
+  };
+
+  return providers[provider] || null;
 }
 
 async function runQuickConfigure(options = {}) {
   const apiKey = String(options.apiKey || "").trim();
+  const provider = String(options.provider || "openrouter").toLowerCase();
+  const providerConfig = getProviderConfig(provider);
+
+  if (!providerConfig) {
+    return {
+      success: false,
+      ok: false,
+      message: "暂不支持该 AI 服务商。"
+    };
+  }
 
   if (!apiKey) {
     return {
       success: false,
       ok: false,
-      message: "请先输入 OpenRouter API Key。"
+      message: "请先输入 API Key。"
     };
   }
 
@@ -142,8 +179,8 @@ async function runQuickConfigure(options = {}) {
     "--flow",
     "quickstart",
     "--auth-choice",
-    "openrouter-api-key",
-    "--openrouter-api-key",
+    providerConfig.authChoice,
+    providerConfig.keyArg,
     apiKey,
     "--install-daemon",
     "--skip-search",

@@ -833,3 +833,8 @@ h2 {
     grid-template-columns: 1fr;
   }
 }
+
+.advanced-settings-note {
+  color: #596273;
+  font-size: 13px;
+}
