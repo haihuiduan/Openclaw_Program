@@ -12,7 +12,7 @@ function createWindow() {
     height: 760,
     minWidth: 860,
     minHeight: 640,
-    title: "OpenClaw Installer",
+    title: "OpenClaw 工具箱",
     backgroundColor: "#f6f7f9",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),

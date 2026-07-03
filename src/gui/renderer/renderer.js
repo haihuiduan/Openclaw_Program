@@ -196,7 +196,7 @@ function renderWelcomeStep() {
     return;
   }
 
-  const card = createCard("欢迎使用 OpenClaw 安装助手", "本工具会帮你在这台 Mac 上准备 OpenClaw，并完成基础 API Key 配置。");
+  const card = createCard("欢迎使用 OpenClaw 工具箱", "本工具会帮你在这台 Mac 上准备 OpenClaw，并完成基础 API Key 配置。");
   card.appendChild(createList([
     "准备 OpenClaw",
     "配置 AI 服务商 API Key",
