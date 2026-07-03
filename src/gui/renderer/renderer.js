@@ -33,6 +33,8 @@ const wizardState = {
   lastDoctorReport: null,
   lastVerifyReport: null,
   pendingQuickConfigVerification: false,
+  dashboardStatus: "idle",
+  dashboardMessage: "",
   isBusy: false
 };
 
@@ -123,9 +125,10 @@ function renderWelcomeStep() {
   if (isReadyToUse()) {
     const card = createCard("OpenClaw 已准备好", "你可以直接打开 Dashboard 使用 OpenClaw，或重新配置 API Key。");
     card.appendChild(createNotice("已检测到 OpenClaw 安装和配置状态。", "pass"));
+    appendDashboardNotice(card);
     appendVersionInfo(card);
     wizardCard.appendChild(card);
-    addAction("打开控制台", openDashboard, "primary");
+    addAction(getDashboardButtonLabel(), openDashboard, "primary");
     addAction("更换 API Key", () => goToConfigure("reconfigure"), "secondary");
     addUpdateActionIfNeeded();
     return;
@@ -224,11 +227,16 @@ function renderVerifyStep() {
 
 function renderDashboardStep() {
   const card = createCard("OpenClaw 已准备好使用", "点击按钮打开浏览器控制台。");
+  appendDashboardNotice(card);
   card.appendChild(createUsageCard());
   wizardCard.appendChild(card);
 
   addBackAction();
-  addAction("打开 OpenClaw 控制台", openDashboard, "primary");
+  addAction(getDashboardButtonLabel(), openDashboard, "primary");
+
+  if (wizardState.dashboardStatus === "failed") {
+    addAction("问题排查", openLogs, "secondary");
+  }
 }
 
 async function runDoctorStep() {
@@ -484,21 +492,23 @@ async function openDashboard(button) {
 
   try {
     const result = await window.openClawInstaller.openDashboard();
-    renderResultCard(
-      result.ok ? "OpenClaw Dashboard" : "无法打开控制台",
-      result.message || (result.ok ? "已尝试打开 OpenClaw Dashboard，请在浏览器中继续使用。" : "未检测到 OpenClaw，请先执行一键安装。"),
-      result.ok ? "pass" : "fail"
-    );
 
     if (result.ok) {
+      wizardState.dashboardStatus = "opened";
+      wizardState.dashboardMessage = result.message || "已尝试打开 OpenClaw Dashboard。请在浏览器中继续使用。";
       updateLastAction("控制台已打开");
-      wizardCard.appendChild(createUsageCard());
     } else {
+      wizardState.dashboardStatus = "failed";
+      wizardState.dashboardMessage = result.message || "控制台打开失败，请稍后重试，或进入问题排查看日志。";
       updateLastAction("控制台打开失败");
     }
+
+    renderDashboardFeedback();
   } catch (error) {
-    renderResultCard("无法打开控制台", getErrorMessage(error), "fail");
+    wizardState.dashboardStatus = "failed";
+    wizardState.dashboardMessage = getErrorMessage(error) || "控制台打开失败，请稍后重试，或进入问题排查看日志。";
     updateLastAction("控制台打开失败");
+    renderDashboardFeedback();
   } finally {
     setBusy(false);
   }
@@ -985,6 +995,38 @@ function createUsageCard() {
     "后续连接更多工具和聊天渠道"
   ]));
   return card;
+}
+
+function appendDashboardNotice(card) {
+  if (wizardState.dashboardStatus === "opened") {
+    card.appendChild(createNotice(wizardState.dashboardMessage || "已尝试打开 OpenClaw Dashboard。请在浏览器中继续使用。", "pass"));
+  }
+
+  if (wizardState.dashboardStatus === "failed") {
+    card.appendChild(createNotice(wizardState.dashboardMessage || "控制台打开失败，请稍后重试，或进入问题排查看日志。", "fail"));
+  }
+}
+
+function getDashboardButtonLabel() {
+  if (wizardState.dashboardStatus === "opened") {
+    return "再次打开控制台";
+  }
+
+  if (wizardState.dashboardStatus === "failed") {
+    return "重试打开控制台";
+  }
+
+  return "打开控制台";
+}
+
+function renderDashboardFeedback() {
+  const stepId = steps[wizardState.currentStep].id;
+
+  if (stepId !== "welcome") {
+    wizardState.currentStep = 4;
+  }
+
+  renderWizard();
 }
 
 function renderUtilities() {
