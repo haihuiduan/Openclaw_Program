@@ -838,3 +838,9 @@ h2 {
   color: #596273;
   font-size: 13px;
 }
+
+.field-help {
+  color: #697386;
+  font-size: 12px;
+  line-height: 1.45;
+}

@@ -172,6 +172,7 @@ async function runQuickConfigure(options = {}) {
     };
   }
 
+  const defaultModel = String(options.defaultModel || "").trim();
   const args = [
     "onboard",
     "--non-interactive",
@@ -190,6 +191,10 @@ async function runQuickConfigure(options = {}) {
     "--skip-ui",
     "--json"
   ];
+
+  if (defaultModel) {
+    args.push("--default-model", defaultModel);
+  }
 
   const result = await runCommand("openclaw", args, {
     allowFailure: true

@@ -37,6 +37,9 @@ contextBridge.exposeInMainWorld("openClawInstaller", {
   openLogsDirectory() {
     return ipcRenderer.invoke("logs:open");
   },
+  openExternal(url) {
+    return ipcRenderer.invoke("external:open", url);
+  },
   onInstallProgress(callback) {
     return subscribeToProgress("install:progress", callback);
   },

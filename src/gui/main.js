@@ -71,6 +71,27 @@ ipcMain.handle("dashboard:open", async () => {
   return installerService.openDashboard();
 });
 
+ipcMain.handle("external:open", async (event, url) => {
+  const allowedUrls = new Set([
+    "https://nodejs.org/zh-cn/download"
+  ]);
+
+  if (!allowedUrls.has(url)) {
+    return {
+      success: false,
+      ok: false,
+      message: "不允许打开该链接。"
+    };
+  }
+
+  await shell.openExternal(url);
+  return {
+    success: true,
+    ok: true,
+    message: "已打开外部链接。"
+  };
+});
+
 ipcMain.handle("logs:open", async () => {
   const result = await installerService.openLogsDirectory();
 

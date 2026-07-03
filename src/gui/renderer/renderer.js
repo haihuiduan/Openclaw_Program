@@ -155,6 +155,7 @@ function renderWelcomeStep() {
 
 function renderPrepareStep() {
   const card = createCard("准备 OpenClaw", "本步骤会自动完成环境检测、安装状态检查、下载安装以及 openclaw 命令验证。");
+  card.appendChild(createParagraph("本工具会自动安装 OpenClaw 本体，但不会在未经确认的情况下修改你的系统环境。如果缺少 Node.js、npm 或 Git，请先按提示安装基础环境。"));
 
   if (wizardState.openClawVersion) {
     card.appendChild(createNotice("检测到 OpenClaw 已安装，版本：" + wizardState.openClawVersion + "。", "pass"));
@@ -288,9 +289,8 @@ async function runInstallStep() {
       await refreshVersionInfo({ renderHome: false });
       addAction("下一步：配置 API", () => goToConfigure("first"), "primary");
     } else {
-      updateLastAction("安装失败");
-      renderResultCard("准备未完成", result.finalMessage || result.error || "请查看准备结果或打开问题排查。", "fail");
-      addAction("重新准备", runInstallStep, "primary");
+      updateLastAction("准备失败");
+      await renderPrepareFailure(result);
       addAction("问题排查", openLogs, "secondary");
     }
   } catch (error) {
@@ -298,7 +298,7 @@ async function runInstallStep() {
       wizardState.installStatus = "安装异常";
       updateStatusCard(openClawStatus, "安装异常", "fail");
     }
-    renderResultCard("准备失败", getErrorMessage(error), "fail");
+    await renderPrepareFailure({ error: getErrorMessage(error) });
   } finally {
     setBusy(false);
   }
@@ -307,7 +307,12 @@ async function runInstallStep() {
 async function runQuickConfigure(form) {
   const apiKey = String(form.elements.apiKey.value || "").trim();
   const provider = String(form.elements.provider.value || "openrouter");
-  const defaultModel = String(form.elements.defaultModel.value || "").trim();
+  const defaultModel = resolveSelectedModel(form);
+
+  if (defaultModel === null) {
+    renderResultCard("需要模型名称", "请输入自定义模型名称，或选择自动推荐。", "fail");
+    return;
+  }
 
   if (!apiKey) {
     renderResultCard("需要 API Key", "请先输入 API Key。", "fail");
@@ -529,15 +534,22 @@ function createQuickConfigureForm() {
       ["qwen", "Qwen"]
     ]),
     createInputField("API Key", "apiKey", "password", getProviderPlaceholder("openrouter")),
-    createInputField("默认模型（可选）", "defaultModel", "text", "不确定可留空，使用 OpenClaw 官方默认值"),
-    createParagraph("本工具不会保存、展示或记录你的 API Key，配置会通过 OpenClaw 官方命令完成。"),
+    createModelSelectField("默认模型", "modelChoice", "openrouter"),
+    createInputField("自定义模型名称", "customModel", "text", "例如 provider/model-name"),
+    createParagraph("服务商请从列表中选择。特殊服务商或高级模型配置可在高级设置中使用官方配置向导。本工具不会保存、展示或记录你的 API Key。"),
   );
 
   const providerSelect = form.elements.provider;
+  const modelSelect = form.elements.modelChoice;
   const apiKeyInput = form.elements.apiKey;
+  const customModelInput = form.elements.customModel;
+  updateCustomModelVisibility(form);
   providerSelect.addEventListener("change", () => {
     apiKeyInput.placeholder = getProviderPlaceholder(providerSelect.value);
+    populateModelOptions(modelSelect, providerSelect.value);
+    updateCustomModelVisibility(form);
   });
+  modelSelect.addEventListener("change", () => updateCustomModelVisibility(form));
 
   const actions = document.createElement("div");
   actions.className = "configure-guide-actions";
@@ -555,6 +567,21 @@ function createQuickConfigureForm() {
   return form;
 }
 
+function resolveSelectedModel(form) {
+  const modelChoice = String(form.elements.modelChoice.value || "auto");
+
+  if (modelChoice === "auto") {
+    return "";
+  }
+
+  if (modelChoice === "custom") {
+    const customModel = String(form.elements.customModel.value || "").trim();
+    return customModel || null;
+  }
+
+  return modelChoice;
+}
+
 function getProviderPlaceholder(provider) {
   const placeholders = {
     openrouter: "请粘贴 OpenRouter API Key",
@@ -565,6 +592,68 @@ function getProviderPlaceholder(provider) {
   };
 
   return placeholders[provider] || "请粘贴服务商 API Key";
+}
+
+const providerModels = {
+  openrouter: [
+    ["auto", "自动推荐，适合首次使用"],
+    ["openrouter/auto", "openrouter/auto"],
+    ["custom", "自定义模型名称"]
+  ],
+  deepseek: [
+    ["auto", "自动推荐，适合首次使用"],
+    ["deepseek-chat", "deepseek-chat"],
+    ["deepseek-reasoner", "deepseek-reasoner"],
+    ["custom", "自定义模型名称"]
+  ],
+  openai: [
+    ["auto", "自动推荐，适合首次使用"],
+    ["gpt-4o-mini", "gpt-4o-mini"],
+    ["gpt-4o", "gpt-4o"],
+    ["custom", "自定义模型名称"]
+  ],
+  gemini: [
+    ["auto", "自动推荐，适合首次使用"],
+    ["gemini-1.5-flash", "gemini-1.5-flash"],
+    ["gemini-1.5-pro", "gemini-1.5-pro"],
+    ["custom", "自定义模型名称"]
+  ],
+  qwen: [
+    ["auto", "自动推荐，适合首次使用"],
+    ["qwen-plus", "qwen-plus"],
+    ["qwen-turbo", "qwen-turbo"],
+    ["custom", "自定义模型名称"]
+  ]
+};
+
+function createModelSelectField(labelText, name, provider) {
+  const field = createSelectField(labelText, name, []);
+  populateModelOptions(field.querySelector("select"), provider);
+  return field;
+}
+
+function populateModelOptions(select, provider) {
+  select.replaceChildren();
+
+  for (const [value, text] of providerModels[provider] || providerModels.openrouter) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = text;
+    select.appendChild(option);
+  }
+}
+
+function updateCustomModelVisibility(form) {
+  const customField = form.elements.customModel.closest(".quick-config-field");
+  const isCustom = form.elements.modelChoice.value === "custom";
+  customField.hidden = !isCustom;
+
+  if (isCustom && !customField.querySelector(".field-help")) {
+    const help = document.createElement("small");
+    help.className = "field-help";
+    help.textContent = "仅在你确认模型 ID 正确时使用。模型名称填错可能导致聊天时报错。";
+    customField.appendChild(help);
+  }
 }
 
 function createInputField(labelText, name, type, placeholder) {
@@ -603,6 +692,71 @@ function createSelectField(labelText, name, options) {
 
   label.append(span, select);
   return label;
+}
+
+async function renderPrepareFailure(result) {
+  const doctorReport = await readDoctorReportSafely();
+  const card = createCard("准备 OpenClaw 未完成", "你的电脑缺少运行 OpenClaw 所需的基础环境，请先按提示安装后重新检测。第一版不会自动安装 Node.js、npm、Git，不会修改 PATH，也不会安装 Homebrew。");
+
+  if (doctorReport && Array.isArray(doctorReport.checks)) {
+    for (const check of doctorReport.checks.filter((item) => item.level === "fail")) {
+      card.appendChild(createCheckCard(check));
+    }
+    appendDependencyRepairSuggestions(card, doctorReport.checks);
+  } else {
+    card.appendChild(createNotice(result.finalMessage || result.error || "请查看准备结果或打开问题排查。", "fail"));
+  }
+
+  wizardCard.replaceChildren();
+  wizardActions.replaceChildren();
+  wizardCard.appendChild(card);
+  addAction("重新检测 / 重新准备", runInstallStep, "primary");
+}
+
+async function readDoctorReportSafely() {
+  try {
+    return await window.openClawInstaller.runDoctor();
+  } catch (error) {
+    return null;
+  }
+}
+
+function appendDependencyRepairSuggestions(card, checks) {
+  const failedText = checks
+    .filter((check) => check.level === "fail")
+    .map((check) => String(check.name || "") + " " + String(check.message || ""))
+    .join(" ")
+    .toLowerCase();
+
+  if (failedText.includes("node") || failedText.includes("npm")) {
+    card.appendChild(createNotice("请安装 Node.js LTS 版本。安装 Node.js 后通常会自带 npm。", "warning"));
+    const actions = document.createElement("div");
+    actions.className = "configure-guide-actions";
+    actions.appendChild(createButton("打开 Node.js 下载页面", () => openExternalUrl("https://nodejs.org/zh-cn/download"), "secondary"));
+    actions.appendChild(createButton("复制安装命令", () => copyText("请访问 https://nodejs.org/zh-cn/download 下载并安装 Node.js LTS"), "secondary"));
+    card.appendChild(actions);
+  }
+
+  if (failedText.includes("git")) {
+    card.appendChild(createNotice("请安装 Git，或在 macOS 上通过 Xcode Command Line Tools 安装。", "warning"));
+    const actions = document.createElement("div");
+    actions.className = "configure-guide-actions";
+    actions.appendChild(createButton("复制命令：xcode-select --install", () => copyText("xcode-select --install"), "secondary"));
+    card.appendChild(actions);
+  }
+}
+
+async function openExternalUrl(url) {
+  if (window.openClawInstaller && window.openClawInstaller.openExternal) {
+    await window.openClawInstaller.openExternal(url);
+  }
+}
+
+async function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(text);
+    updateLastAction("已复制命令");
+  }
 }
 
 function renderProgressCard(title, description, items) {
