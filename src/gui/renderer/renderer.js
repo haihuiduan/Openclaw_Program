@@ -299,6 +299,7 @@ function renderToolboxHome() {
   wizardCard.appendChild(card);
 
   addAction("启动控制台", openDashboard, "primary");
+  addAction("停止控制台", stopDashboard, "secondary");
   addAction("更换 API Key", () => goToConfigure("reconfigure"), "secondary");
 }
 
@@ -681,7 +682,7 @@ async function stopDashboard() {
     if (result.ok) {
       wizardState.dashboardStatus = "stopped";
       wizardState.dashboardMessage = result.message || "已停止 OpenClaw 控制台。";
-      updateLastAction("已停止控制台");
+      updateLastAction("停止控制台");
       syncConsoleStatus();
     } else {
       wizardState.dashboardStatus = "failed";
