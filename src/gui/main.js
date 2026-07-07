@@ -26,7 +26,9 @@ function createWindow() {
 }
 
 ipcMain.handle("doctor:run", async () => {
-  return installerService.runDoctor(loadConfig());
+  return installerService.runDoctor(loadConfig(), {
+    isDevRuntime: !app.isPackaged
+  });
 });
 
 ipcMain.handle("install:run", async () => {

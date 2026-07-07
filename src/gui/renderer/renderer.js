@@ -12,14 +12,17 @@ const appStage = document.querySelector("#appStage");
 const wizardTitle = document.querySelector("#wizardTitle");
 const wizardDescription = wizardTitle && wizardTitle.nextElementSibling;
 const aboutMenu = document.querySelector("#aboutMenu");
+const appearanceButton = document.querySelector("#appearanceButton");
+const appearanceMenu = document.querySelector("#appearanceMenu");
+const appearanceModeLabel = document.querySelector("#appearanceModeLabel");
 const homeButton = document.querySelector("#homeButton");
+const sidebarButtons = [...document.querySelectorAll("[data-page]")];
 const wizardProgress = document.querySelector("#wizardProgress");
 const wizardCard = document.querySelector("#wizardCard");
 const wizardActions = document.querySelector("#wizardActions");
 const wizardUtilities = document.querySelector("#wizardUtilities");
 
 const steps = [
-  { id: "welcome", label: "欢迎" },
   { id: "prepare", label: "准备 OpenClaw" },
   { id: "configure", label: "配置 API Key" },
   { id: "verify", label: "检查配置" },
@@ -27,6 +30,7 @@ const steps = [
 ];
 
 const wizardState = {
+  currentPage: "home",
   currentStep: 0,
   environmentStatus: "未检测",
   installStatus: "未安装",
@@ -49,26 +53,60 @@ const wizardState = {
   updateNoticeDismissed: false,
   updateCheckStatus: "idle",
   toolboxNotice: null,
-  toolboxDoctorReport: null
+  toolboxDoctorReport: null,
+  appearanceMode: "system"
 };
 
 setupCompactStatusBar();
+applyAppearanceMode();
 
 if (window.openClawInstaller) {
   appStage.textContent = window.openClawInstaller.stage;
 }
 
 if (appStage) {
-  appStage.addEventListener("click", toggleAboutMenu);
+  appStage.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleAboutMenu();
+  });
 }
 
-if (homeButton) {
-  homeButton.addEventListener("click", handleGoHome);
+if (aboutMenu) {
+  aboutMenu.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+}
+
+if (appearanceButton) {
+  appearanceButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleAppearanceMenu();
+  });
+}
+
+if (appearanceMenu) {
+  for (const option of appearanceMenu.querySelectorAll("[data-theme-option]")) {
+    option.addEventListener("click", () => setAppearanceMode(option.dataset.themeOption));
+  }
+}
+
+for (const button of sidebarButtons) {
+  button.addEventListener("click", () => {
+    closeAppearanceMenu();
+    navigateToPage(button.dataset.page);
+  });
 }
 
 if (recentStatusButton) {
   recentStatusButton.addEventListener("click", toggleRecentStatusMenu);
 }
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeAppearanceMenu();
+    closeAboutMenu();
+  }
+});
 
 document.addEventListener("click", (event) => {
   if (recentStatusMenu && recentStatusButton && !recentStatusMenu.hidden) {
@@ -82,6 +120,12 @@ document.addEventListener("click", (event) => {
       closeAboutMenu();
     }
   }
+
+  if (appearanceMenu && appearanceButton && !appearanceMenu.hidden) {
+    if (!appearanceMenu.contains(event.target) && !appearanceButton.contains(event.target)) {
+      closeAppearanceMenu();
+    }
+  }
 });
 
 renderWizard();
@@ -89,11 +133,93 @@ probeStartupState();
 
 function renderWizard() {
   syncConsoleStatus();
+  syncHomeChromeState();
   updateWizardHeading();
   renderProgress();
   renderCurrentStep();
   renderUtilities();
+  updateSidebarState();
   updateHomeButtonState();
+}
+
+function syncHomeChromeState() {
+  document.body.classList.toggle("is-home-dashboard", wizardState.currentPage === "home" && wizardState.currentStep === 0);
+}
+
+function toggleAppearanceMenu() {
+  if (!appearanceMenu || !appearanceButton) {
+    return;
+  }
+
+  const shouldOpen = appearanceMenu.hidden;
+  appearanceMenu.hidden = !shouldOpen;
+  appearanceButton.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+
+  if (shouldOpen) {
+    closeAboutMenu();
+    syncAppearanceMenu();
+  }
+}
+
+function closeAppearanceMenu() {
+  if (!appearanceMenu || !appearanceButton) {
+    return;
+  }
+
+  appearanceMenu.hidden = true;
+  appearanceButton.setAttribute("aria-expanded", "false");
+}
+
+function setAppearanceMode(mode) {
+  wizardState.appearanceMode = ["system", "light", "dark"].includes(mode) ? mode : "system";
+  applyAppearanceMode();
+  closeAppearanceMenu();
+}
+
+function applyAppearanceMode() {
+  document.body.dataset.theme = wizardState.appearanceMode;
+
+  if (appearanceModeLabel) {
+    appearanceModeLabel.textContent = getAppearanceModeLabel(wizardState.appearanceMode);
+  }
+
+  syncAppearanceMenu();
+}
+
+function syncAppearanceMenu() {
+  if (!appearanceMenu) {
+    return;
+  }
+
+  for (const option of appearanceMenu.querySelectorAll("[data-theme-option]")) {
+    const isActive = option.dataset.themeOption === wizardState.appearanceMode;
+    option.classList.toggle("active", isActive);
+    option.textContent = (isActive ? "✓ " : "") + getAppearanceOptionText(option.dataset.themeOption);
+  }
+}
+
+function getAppearanceModeLabel(mode) {
+  if (mode === "light") {
+    return "浅色";
+  }
+
+  if (mode === "dark") {
+    return "深色";
+  }
+
+  return "跟随系统";
+}
+
+function getAppearanceOptionText(mode) {
+  if (mode === "light") {
+    return "浅色模式";
+  }
+
+  if (mode === "dark") {
+    return "深色模式";
+  }
+
+  return "跟随系统";
 }
 
 function setupCompactStatusBar() {
@@ -175,6 +301,11 @@ function syncConsoleStatus() {
     return;
   }
 
+  if (wizardState.dashboardStatus === "stopping") {
+    updateStatusCard(consoleStatus, "停止中", "running");
+    return;
+  }
+
   if (wizardState.dashboardStatus === "failed") {
     updateStatusCard(consoleStatus, "未运行", "warning");
     return;
@@ -188,9 +319,37 @@ function updateWizardHeading() {
     return;
   }
 
-  if (isToolboxHome()) {
-    wizardTitle.textContent = "OpenClaw 已准备好";
-    wizardDescription.textContent = "你可以启动控制台开始使用 OpenClaw，也可以更换 API Key 或管理后台服务。";
+  if (wizardState.currentPage === "home" && wizardState.currentStep === 0) {
+    const homeState = getHomeState();
+
+    if (homeState === "ready") {
+      wizardTitle.textContent = "OpenClaw 已准备好";
+      wizardDescription.textContent = "适用于 macOS 的 OpenClaw 安装、配置与控制台管理工具。";
+      return;
+    }
+
+    if (homeState === "installed-unconfigured") {
+      wizardTitle.textContent = "OpenClaw 已安装，还需要配置 API Key";
+      wizardDescription.textContent = "你的电脑已经安装了 OpenClaw。下一步需要配置 AI 服务商和 API Key，配置完成后即可启动控制台。";
+      return;
+    }
+  }
+
+  if (wizardState.currentPage === "configure") {
+    wizardTitle.textContent = "配置 API Key";
+    wizardDescription.textContent = "用于新配置或更换 API Key。配置完成后，工具箱会重新检查 OpenClaw 是否可用。";
+    return;
+  }
+
+  if (wizardState.currentPage === "troubleshoot") {
+    wizardTitle.textContent = "问题排查";
+    wizardDescription.textContent = "这里收纳诊断、日志、官方配置向导和更新检查等高级操作。";
+    return;
+  }
+
+  if (wizardState.currentPage === "settings") {
+    wizardTitle.textContent = "设置";
+    wizardDescription.textContent = "更多偏好设置将在后续版本中提供。";
     return;
   }
 
@@ -201,28 +360,30 @@ function updateWizardHeading() {
 function renderProgress() {
   wizardProgress.replaceChildren();
 
-  if (isToolboxHome()) {
+  if (wizardState.currentPage !== "home" || wizardState.currentStep === 0) {
     wizardProgress.hidden = true;
     return;
   }
 
   wizardProgress.hidden = false;
 
+  const activeIndex = wizardState.currentStep - 1;
+
   for (const [index, step] of steps.entries()) {
     const item = document.createElement("div");
     item.className = "wizard-step";
 
-    if (index < wizardState.currentStep) {
+    if (index < activeIndex) {
       item.classList.add("completed");
     }
 
-    if (index === wizardState.currentStep) {
+    if (index === activeIndex) {
       item.classList.add("active");
     }
 
     const dot = document.createElement("span");
     dot.className = "wizard-step-dot";
-    dot.textContent = index < wizardState.currentStep ? "✓" : String(index + 1);
+    dot.textContent = index < activeIndex ? "✓" : String(index + 1);
 
     const label = document.createElement("span");
     label.textContent = step.label;
@@ -236,12 +397,17 @@ function renderCurrentStep() {
   wizardCard.replaceChildren();
   wizardActions.replaceChildren();
 
-  const stepId = steps[wizardState.currentStep].id;
+  if (wizardState.currentPage !== "home") {
+    renderPage();
+    return;
+  }
 
-  if (stepId === "welcome") {
+  if (wizardState.currentStep === 0) {
     renderWelcomeStep();
     return;
   }
+
+  const stepId = steps[wizardState.currentStep - 1].id;
 
   if (stepId === "prepare") {
     renderPrepareStep();
@@ -261,6 +427,216 @@ function renderCurrentStep() {
   renderDashboardStep();
 }
 
+function renderPage() {
+  if (wizardState.currentPage === "configure") {
+    renderStandaloneConfigurePage();
+    return;
+  }
+
+  if (wizardState.currentPage === "troubleshoot") {
+    renderTroubleshootPage();
+    return;
+  }
+
+  if (wizardState.currentPage === "settings") {
+    renderSettingsPage();
+    return;
+  }
+
+  renderWelcomeStep();
+}
+
+function renderStandaloneConfigurePage() {
+  wizardState.configureMode = wizardState.configureMode || "first";
+
+  if (wizardState.installStatus !== "已安装") {
+    renderOpenClawRequiredPage({ includeRecheck: true });
+    return;
+  }
+
+  const card = createCard(wizardState.configureMode === "reconfigure" ? "重新配置 API Key" : "配置 API Key", "选择服务商、填写 API Key，并选择模型。");
+  card.classList.add("toolbox-page-card", "configure-page-card");
+  card.appendChild(createQuickConfigureForm());
+  wizardCard.appendChild(card);
+
+}
+
+function renderOpenClawRequiredPage(options = {}) {
+  const card = createCard("需要先准备 OpenClaw", "当前未检测到 OpenClaw。请先完成 OpenClaw 准备步骤，然后再配置 API Key。OpenClaw 官方安装器会检查并处理必要的运行环境。");
+  card.classList.add("toolbox-page-card");
+  wizardCard.appendChild(card);
+
+  addAction("去准备 OpenClaw", () => goToStep(1), "primary");
+
+  if (options.includeRecheck) {
+    addAction("重新检查", probeStartupState, "secondary");
+  } else {
+    addAction("返回首页", handleGoHome, "secondary");
+  }
+
+  addAction("打开问题排查", () => navigateToPage("troubleshoot"), "secondary");
+}
+
+function isOpenClawMissingMessage(message) {
+  return /未检测到 OpenClaw|openclaw not found|command not found|请先执行一键安装|请先运行 install|OpenClaw 命令/.test(String(message || ""));
+}
+
+function renderStatusPage() {
+  const page = document.createElement("div");
+  page.className = "toolbox-page-grid";
+
+  page.appendChild(createInfoCard("当前状态", [
+    ["OpenClaw", wizardState.installStatus],
+    ["控制台", getConsoleStatusLabel()],
+    ["配置状态", wizardState.configStatus],
+    ["当前模型", getConfiguredModelLabel()]
+  ]));
+
+  page.appendChild(createActionCard("控制台管理", "启动、停止控制台，或重新检查当前状态。", [
+    ["启动控制台", openDashboard, "primary"],
+    ["停止控制台", stopDashboard, "secondary"],
+    ["重新检查状态", runStatusCheck, "secondary"]
+  ], appendDashboardNotice));
+
+  page.appendChild(createInfoCard("最近状态", [
+    ["最近一次检查", wizardState.lastVerifyReport ? "已检查" : "尚未检查"],
+    ["最近一次配置", getConfiguredAtLabel()],
+    ["当前服务商", formatProviderLabel(getConfiguredProviderLabel())],
+    ["当前版本", wizardState.openClawVersion || "未知"]
+  ]));
+
+  wizardCard.appendChild(page);
+}
+
+function renderTroubleshootPage() {
+  const page = document.createElement("div");
+  page.className = "toolbox-page-stack";
+
+  const actions = document.createElement("div");
+  actions.className = "toolbox-page-grid";
+  actions.appendChild(createActionCard("常用修复操作", "重新检查基础环境、配置和更新状态。", [
+    ["重新检查环境", rerunEnvironmentCheck, "primary"],
+    ["检查配置", runStatusCheck, "secondary"],
+    ["检查更新", checkUpdateFromAbout, "secondary"]
+  ]));
+  actions.appendChild(createActionCard("控制台维护", "控制 OpenClaw 控制台的启动和停止。", [
+    ["启动控制台", openDashboard, "primary"],
+    ["停止控制台", stopDashboard, "secondary"]
+  ], appendDashboardNotice));
+  actions.appendChild(createActionCard("高级操作", "需要手动排查时使用。", [
+    ["官方配置向导", openAdvancedConfigure, "secondary"],
+    ["查看最近日志", openLogs, "secondary"]
+  ]));
+  page.appendChild(actions);
+
+  page.appendChild(createInfoCard("检测结果", [
+    ["Node.js", getDoctorCheckLabel("Node.js")],
+    ["npm", getDoctorCheckLabel("npm")],
+    ["Git", getDoctorCheckLabel("git")],
+    ["OpenClaw", wizardState.installStatus === "已安装" ? "正常" : "未安装"],
+    ["OpenClaw 配置", getTroubleshootConfigLabel()],
+    ["GUI 配置确认", hasGuiConfigState() ? "正常" : "待确认"],
+    ["控制台状态", getConsoleStatusLabel()]
+  ]));
+
+  const technical = document.createElement("details");
+  technical.className = "toolbox-technical-card";
+  const summary = document.createElement("summary");
+  summary.textContent = "技术信息";
+  const body = createKeyValueList([
+    ["OpenClaw 版本", wizardState.openClawVersion || "未知"],
+    ["日志目录", "~/.openclaw-installer/logs/"],
+    ["配置状态文件", "~/.openclaw-installer/config-state.json"],
+    ["安装助手命令", "openclaw-installer"],
+    ["OpenClaw 命令", "openclaw"],
+    ["最近一次错误", getRecentErrorSummary()]
+  ]);
+  technical.append(summary, body);
+  page.appendChild(technical);
+
+  wizardCard.appendChild(page);
+}
+
+function createInfoPanel(titleText, items) {
+  const card = createCard(titleText, "");
+  card.classList.add("toolbox-page-card", "toolbox-info-panel");
+  card.appendChild(createList(items, "toolbox-info-list"));
+  return card;
+}
+
+function createInfoCard(titleText, rows) {
+  const card = createCard(titleText, "");
+  card.classList.add("toolbox-page-card");
+  card.appendChild(createKeyValueList(rows));
+  return card;
+}
+
+function createActionCard(titleText, descriptionText, actions, appendExtra) {
+  const card = createCard(titleText, descriptionText);
+  card.classList.add("toolbox-page-card", "toolbox-action-card");
+
+  if (appendExtra) {
+    appendExtra(card);
+  }
+
+  const actionRow = document.createElement("div");
+  actionRow.className = "toolbox-card-actions";
+
+  for (const [label, handler, kind] of actions) {
+    actionRow.appendChild(createButton(label, handler, kind || "secondary"));
+  }
+
+  card.appendChild(actionRow);
+  return card;
+}
+
+function getDoctorCheckLabel(pattern) {
+  const report = wizardState.toolboxDoctorReport || wizardState.lastDoctorReport;
+  const checks = report && Array.isArray(report.checks) ? report.checks : [];
+  const found = checks.find((check) => String(check.name || "").toLowerCase().includes(String(pattern).toLowerCase()));
+
+  if (!found) {
+    return "未检测";
+  }
+
+  if (found.level === "fail") {
+    return "异常";
+  }
+
+  if (found.level === "warning") {
+    return "待确认";
+  }
+
+  return "正常";
+}
+
+function getTroubleshootConfigLabel() {
+  if (wizardState.configStatus === "已配置") {
+    return "正常";
+  }
+
+  if (wizardState.configStatus === "待确认") {
+    return "待确认";
+  }
+
+  if (wizardState.configStatus === "配置异常") {
+    return "异常";
+  }
+
+  return "待配置";
+}
+
+function getRecentErrorSummary() {
+  const recentError = wizardState.recentActions.find((item) => /失败|异常|需要处理/.test(item));
+  return recentError || "暂无";
+}
+
+function renderSettingsPage() {
+  const card = createCard("设置", "更多偏好设置将在后续版本中提供。");
+  card.appendChild(createNotice("当前版本暂不需要额外设置。", "info"));
+  wizardCard.appendChild(card);
+}
+
 function renderWelcomeStep() {
   if (wizardState.isProbingStartup) {
     renderProgressCard("正在识别当前状态...", "正在检查 OpenClaw 是否已安装、配置是否可用。", [
@@ -271,67 +647,382 @@ function renderWelcomeStep() {
     return;
   }
 
-  if (isReadyToUse()) {
+  const homeState = getHomeState();
+
+  if (homeState === "ready") {
     renderToolboxHome();
     return;
   }
 
-  if (wizardState.installStatus === "已安装" && wizardState.configStatus === "待确认") {
-    const card = createCard("需要确认配置", "检测到这台电脑上可能已有 OpenClaw 配置，但本工具还不能确认 API Key 是否可用。你可以检查现有配置，或重新配置 API Key。");
-    wizardCard.appendChild(card);
-    addAction("检查现有配置", () => runVerifyStep({ confirmConfig: false }), "primary");
-    addAction("重新配置 API Key", () => goToConfigure("reconfigure"), "secondary");
-    addAction("官方配置向导", openAdvancedConfigure, "secondary");
+  if (homeState === "installed-unconfigured") {
+    renderInstalledUnconfiguredHome();
     return;
   }
 
-  if (wizardState.installStatus === "已安装") {
-    const card = createCard("还差一步：配置 API Key", "已检测到 OpenClaw 已安装。请配置 AI 服务商 API Key 后开始使用。");
-    card.appendChild(createNotice("如果你以前配置过，也可以检查现有配置。", "info"));
-    wizardCard.appendChild(card);
-    addAction("配置 API Key", () => goToConfigure("first"), "primary");
-    addAction("我已有配置，检查一下", () => runVerifyStep({ confirmConfig: false }), "secondary");
-    addAction("官方配置向导", openAdvancedConfigure, "secondary");
-    return;
-  }
+  renderNewUserHome();
+}
 
-  const card = createCard("欢迎使用 OpenClaw 工具箱", "本工具会帮你在这台 Mac 上准备 OpenClaw，并完成基础 API Key 配置。");
-  card.appendChild(createList([
-    "准备 OpenClaw",
-    "配置 AI 服务商 API Key",
-    "检查配置是否可用",
-    "打开控制台开始使用"
-  ]));
-  wizardCard.appendChild(card);
+function renderNewUserHome() {
+  const dashboard = document.createElement("div");
+  dashboard.className = "home-dashboard home-dashboard-new-user first-run-home";
 
-  addAction("开始", () => goToStep(1), "primary");
+  const intro = document.createElement("section");
+  intro.className = "first-run-guide-card";
+
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "first-run-eyebrow";
+  eyebrow.textContent = "首次准备";
+
+  const title = document.createElement("h2");
+  title.className = "home-hero-title";
+  title.textContent = "欢迎使用 OpenClaw 工具箱";
+
+  const description = document.createElement("p");
+  description.className = "home-hero-description";
+  description.textContent = "工具箱会帮助你准备 OpenClaw、配置 API Key，并打开控制台开始使用。";
+
+  const statusRow = document.createElement("div");
+  statusRow.className = "first-run-status-row";
+  statusRow.append(
+    createHomeTag("OpenClaw", "未安装", "neutral"),
+    createHomeTag("API Key", "待配置", "warning"),
+    createHomeTag("控制台", "未启动", "neutral")
+  );
+
+  const actionPanel = document.createElement("div");
+  actionPanel.className = "first-run-action-panel";
+
+  const actionTitle = document.createElement("h3");
+  actionTitle.textContent = "开始准备 OpenClaw";
+
+  const actionDescription = document.createElement("p");
+  actionDescription.textContent = "当前未检测到 OpenClaw。点击下方按钮后，工具箱会调用 OpenClaw 官方安装器完成准备。官方安装器会检查必要的运行环境。";
+
+  const actionRow = document.createElement("div");
+  actionRow.className = "first-run-action-row";
+  actionRow.append(
+    createButton("开始准备 OpenClaw", () => goToStep(1), "primary"),
+    createButton("打开问题排查", () => navigateToPage("troubleshoot"), "secondary")
+  );
+
+  const helper = document.createElement("p");
+  helper.className = "first-run-helper";
+  helper.textContent = "本工具不会保存、展示或记录你的 API Key。API Key 配置会在 OpenClaw 安装完成后进行。若安装失败，可在问题排查中查看基础组件准备建议。";
+
+  actionPanel.append(actionTitle, actionDescription, actionRow, helper);
+  intro.append(eyebrow, title, description, statusRow, actionPanel);
+
+  dashboard.appendChild(intro);
+  dashboard.appendChild(createHomeRecentCard());
+  wizardCard.appendChild(dashboard);
+}
+
+function renderInstalledUnconfiguredHome() {
+  renderHomeDashboard({
+    state: "installed-unconfigured",
+    title: "OpenClaw 已安装，还需要配置 API Key",
+    description: "下一步需要配置 AI 服务商和 API Key，配置完成后即可启动控制台。",
+    tags: [
+      ["OpenClaw", "已安装", "pass"],
+      ["API Key", wizardState.configStatus === "待确认" ? "待确认" : "待配置", "warning"],
+      ["控制台", "未启动", "neutral"]
+    ],
+    primaryLabel: "配置 API Key",
+    primaryHandler: () => navigateToPage("configure")
+  });
 }
 
 function renderToolboxHome() {
-  const heading = document.createElement("div");
-  heading.className = "toolbox-home-heading";
+  renderHomeDashboard({
+    state: "ready",
+    title: "OpenClaw 已准备好",
+    description: "你可以启动控制台开始使用 OpenClaw，也可以更换 API Key 或查看问题排查。",
+    tags: [
+      ["OpenClaw", "已安装", "pass"],
+      ["API Key", "已配置", "pass"],
+      ["控制台", getConsoleStatusLabel(), wizardState.dashboardStatus === "opened" ? "pass" : "neutral"],
+      ["当前模型", getConfiguredModelLabel(), "neutral"]
+    ],
+    primaryLabel: "启动控制台",
+    primaryHandler: openDashboard,
+    heroActions: [
+      ["停止控制台", stopDashboard],
+      ["刷新状态", runStatusCheck]
+    ]
+  });
+}
+
+function renderHomeDashboard(options) {
+  const dashboard = document.createElement("div");
+  dashboard.className = "home-dashboard home-dashboard-" + options.state;
+
+  const hero = document.createElement("div");
+  hero.className = "home-hero";
+
+  const content = document.createElement("div");
+  content.className = "home-hero-content";
 
   const title = document.createElement("h2");
-  title.textContent = "OpenClaw 工具箱";
+  title.className = "home-hero-title";
+  title.textContent = options.title;
 
-  const subtitle = document.createElement("p");
-  subtitle.textContent = "控制台管理与 API Key 配置";
+  const description = document.createElement("p");
+  description.className = "home-hero-description";
+  description.textContent = options.description;
 
-  heading.append(title, subtitle);
-  wizardCard.appendChild(heading);
+  const tags = document.createElement("div");
+  tags.className = "home-tag-row";
+  for (const [label, value, state] of options.tags) {
+    tags.appendChild(createHomeTag(label, value, state));
+  }
 
-  const card = createCard("控制台", "启动后可在浏览器中使用 OpenClaw 控制台。");
-  appendDashboardNotice(card);
-  appendToolboxDiagnostics(card);
-  wizardCard.appendChild(card);
+  content.append(title, description, tags);
 
-  addAction("启动控制台", openDashboard, "primary");
-  addAction("停止控制台", stopDashboard, "secondary");
-  addAction("更换 API Key", () => goToConfigure("reconfigure"), "secondary");
+  const actions = document.createElement("div");
+  actions.className = "home-hero-actions";
+  actions.appendChild(createButton(options.primaryLabel, options.primaryHandler, "primary"));
+
+  for (const [label, handler] of options.heroActions || []) {
+    actions.appendChild(createButton(label, handler, "secondary"));
+  }
+
+  hero.append(content, actions);
+  dashboard.appendChild(hero);
+  dashboard.appendChild(createHomeCardGrid(options.state));
+  dashboard.appendChild(createHomeRecentCard());
+  wizardCard.appendChild(dashboard);
+}
+
+function createHomeTag(label, value, state) {
+  const tag = document.createElement("span");
+  tag.className = "home-tag home-tag-" + (state || "neutral");
+  tag.textContent = label + " " + value;
+  return tag;
+}
+
+function createHomeCardGrid(homeState) {
+  const grid = document.createElement("div");
+  grid.className = "home-dashboard-grid";
+
+  grid.appendChild(createDashboardCard({
+    title: "OpenClaw",
+    status: getOpenClawCardStatus(homeState),
+    detail: getOpenClawCardDetail(homeState),
+    meta: "命令：openclaw",
+    state: homeState === "new-user" ? "neutral" : "pass"
+  }));
+
+  grid.appendChild(createDashboardCard({
+    title: "控制台状态",
+    status: getConsoleStatusLabel(),
+    detail: getConsoleCardDetail(),
+    state: getConsoleCardState()
+  }));
+
+  grid.appendChild(createDashboardCard({
+    title: "API Key",
+    status: getApiKeyCardStatus(homeState),
+    detail: homeState === "ready" ? "AI 服务商已配置" : "需要配置 AI 服务商",
+    state: homeState === "ready" ? "pass" : "warning"
+  }));
+
+  grid.appendChild(createDashboardCard({
+    title: "当前模型",
+    status: homeState === "new-user" ? "待配置" : getConfiguredModelLabel(),
+    detail: "服务商：" + getHomeProviderLabel(homeState),
+    meta: homeState === "ready" ? "模型标签" : "配置后可使用",
+    state: homeState === "ready" ? "pass" : "neutral"
+  }));
+
+  grid.appendChild(createDashboardCard({
+    title: "配置入口",
+    status: homeState === "ready" ? "可调整" : "待完成",
+    detail: homeState === "ready" ? "可更换 API Key 或检查配置" : "完成准备后配置 API Key",
+    state: homeState === "ready" ? "pass" : "warning",
+    actions: [
+      [homeState === "ready" ? "更换 API Key" : "配置 API Key", () => navigateToPage("configure", { mode: homeState === "ready" ? "reconfigure" : "first" })],
+      ["检查配置", runStatusCheck]
+    ]
+  }));
+
+  grid.appendChild(createDashboardCard({
+    title: "安全须知",
+    status: "本地安全",
+    detail: "本工具不会保存、展示或记录你的 API Key。",
+    meta: "配置过程调用 OpenClaw 官方命令完成",
+    state: "neutral"
+  }));
+
+  return grid;
+}
+
+function createDashboardCard(options) {
+  const card = document.createElement("section");
+  card.className = "dashboard-card dashboard-card-" + (options.state || "neutral");
+
+  const heading = document.createElement("div");
+  heading.className = "dashboard-card-heading";
+  heading.textContent = options.title;
+
+  const status = document.createElement("strong");
+  status.className = "dashboard-card-status";
+  status.textContent = options.status;
+
+  const detail = document.createElement("p");
+  detail.className = "dashboard-card-detail";
+  detail.textContent = options.detail;
+
+  card.append(heading, status, detail);
+
+  if (options.meta) {
+    const meta = document.createElement("div");
+    meta.className = "dashboard-card-meta";
+    meta.textContent = options.meta;
+    card.appendChild(meta);
+  }
+
+  if (options.actions) {
+    const actions = document.createElement("div");
+    actions.className = "dashboard-card-actions";
+    for (const [label, handler] of options.actions) {
+      actions.appendChild(createUtilityLink(label, handler));
+    }
+    card.appendChild(actions);
+  }
+
+  return card;
+}
+
+function createHomeRecentCard() {
+  const card = document.createElement("section");
+  card.className = "home-recent-card";
+
+  const header = document.createElement("div");
+  header.className = "home-recent-header";
+
+  const title = document.createElement("strong");
+  title.textContent = "最近操作";
+
+  header.appendChild(title);
+  card.appendChild(header);
+
+  const list = document.createElement("div");
+  list.className = "home-recent-list";
+
+  const recentActions = getEffectiveRecentActions(3);
+
+  if (!recentActions.length) {
+    const empty = document.createElement("span");
+    empty.className = "home-recent-empty";
+    empty.textContent = "暂无最近操作";
+    list.appendChild(empty);
+  } else {
+    for (const action of recentActions) {
+      const item = document.createElement("span");
+      item.className = "home-recent-item";
+      item.textContent = action;
+      list.appendChild(item);
+    }
+  }
+
+  card.appendChild(list);
+  return card;
+}
+
+function getOpenClawCardStatus(homeState) {
+  return homeState === "new-user" ? "未安装" : "已安装";
+}
+
+function getOpenClawCardDetail(homeState) {
+  if (homeState === "new-user") {
+    return "等待准备 OpenClaw";
+  }
+
+  return wizardState.openClawVersion ? "版本：" + wizardState.openClawVersion : "版本：未知";
+}
+
+function getApiKeyCardStatus(homeState) {
+  if (homeState === "ready") {
+    return "已配置";
+  }
+
+  return homeState === "installed-unconfigured" ? "待配置" : "未配置";
+}
+
+function getConsoleCardDetail() {
+  if (wizardState.dashboardStatus === "opened") {
+    return wizardState.dashboardMessage || "Dashboard 已运行";
+  }
+
+  if (wizardState.dashboardStatus === "starting") {
+    return wizardState.dashboardMessage || "正在启动 OpenClaw 控制台";
+  }
+
+  if (wizardState.dashboardStatus === "stopping") {
+    return wizardState.dashboardMessage || "正在停止 OpenClaw 控制台";
+  }
+
+  if (wizardState.dashboardStatus === "failed") {
+    return wizardState.dashboardMessage || "控制台暂未启动";
+  }
+
+  return "Dashboard 尚未启动";
+}
+
+function getConsoleCardState() {
+  if (wizardState.dashboardStatus === "opened") {
+    return "pass";
+  }
+
+  if (wizardState.dashboardStatus === "failed") {
+    return "fail";
+  }
+
+  if (wizardState.dashboardStatus === "starting" || wizardState.dashboardStatus === "stopping") {
+    return "warning";
+  }
+
+  return "neutral";
+}
+
+function getConsoleStatusLabel() {
+  if (wizardState.dashboardStatus === "opened") {
+    return "运行中";
+  }
+
+  if (wizardState.dashboardStatus === "starting") {
+    return "启动中";
+  }
+
+  if (wizardState.dashboardStatus === "stopping") {
+    return "停止中";
+  }
+
+  return "未启动";
+}
+
+function getHomeProviderLabel(homeState) {
+  if (homeState !== "ready") {
+    return "待配置";
+  }
+
+  return formatProviderLabel(getConfiguredProviderLabel());
+}
+
+function formatProviderLabel(provider) {
+  const map = {
+    openrouter: "OpenRouter",
+    openai: "OpenAI",
+    deepseek: "DeepSeek",
+    gemini: "Gemini",
+    qwen: "Qwen"
+  };
+  const key = String(provider || "").toLowerCase();
+  return map[key] || provider || "未知";
 }
 
 function renderPrepareStep() {
-  const card = createCard("准备 OpenClaw", "本步骤会检查这台 Mac 是否满足运行条件，并安装或确认 OpenClaw。");
+  const card = createCard("正在准备 OpenClaw", "工具箱正在检查环境并安装 OpenClaw，请稍候。");
   card.appendChild(createParagraph("本工具会自动安装 OpenClaw 本体，但不会在未经确认的情况下修改你的系统环境。如果缺少基础环境，请先按提示处理。"));
 
   if (wizardState.openClawVersion) {
@@ -367,34 +1058,35 @@ function renderConfigureStep() {
 
   addBackAction();
 
-  if (wizardState.configStatus === "已配置") {
-    addAction("下一步：检查配置", () => goToStep(3), "primary");
-  }
 }
 
 function renderVerifyStep() {
-  const card = createCard("检查 OpenClaw 配置", "本工具会检查 OpenClaw 是否可以正常读取配置，并确认基础状态。");
+  const card = createCard("检查配置", "工具箱会确认 OpenClaw 是否可以正常调用模型。");
 
   if (wizardState.verifyStatus === "通过") {
-    card.appendChild(createNotice("配置已确认，可以打开控制台。", "pass"));
+    card.appendChild(createNotice("配置完成。OpenClaw 已经可以使用。你现在可以打开控制台开始使用。", "pass"));
   } else if (wizardState.verifyStatus === "失败") {
-    card.appendChild(createNotice("配置可能未完成，请检查 API Key 或重新配置。", "fail"));
+    card.appendChild(createNotice("配置未通过。可能是 API Key 填写错误、当前模型不可用、网络连接不稳定，或服务商暂时无法访问。", "fail"));
   } else {
-    card.appendChild(createNotice("完成配置后，请检查 OpenClaw 是否可以基本使用。", "info"));
+    card.appendChild(createNotice("完成配置后，请检查 OpenClaw 是否可以正常使用。", "info"));
   }
 
   wizardCard.appendChild(card);
   addBackAction();
-  addAction("开始检查", runVerifyStep, "primary");
 
   if (wizardState.verifyStatus === "通过") {
-    addAction("下一步：打开控制台", () => goToStep(4), "primary");
+    addAction("打开控制台", openDashboardFromConfigResult, "primary");
+    addAction("返回首页", handleGoHome, "secondary");
+    return;
   }
 
   if (wizardState.verifyStatus === "失败") {
-    addAction("返回配置", () => goToConfigure("first"), "secondary");
-    addAction("问题排查", openLogs, "secondary");
+    addAction("重新配置 API Key", () => goToConfigure("first"), "primary");
+    addAction("打开问题排查", openLogs, "secondary");
+    return;
   }
+
+  addAction("开始检查", runVerifyStep, "primary");
 }
 
 function renderDashboardStep() {
@@ -451,11 +1143,13 @@ async function runDoctorStep() {
 async function runInstallStep() {
   setBusy(true);
   updateLastAction("正在安装");
-  renderProgressCard("正在准备 OpenClaw...", "正在自动检测环境、检查安装状态并准备 OpenClaw。本步骤不处理 API Key。", [
-    "检查基础环境",
-    "检查是否已安装 OpenClaw",
-    "安装 OpenClaw",
-    "确认命令可用"
+  renderProgressCard("正在准备 OpenClaw", "工具箱正在检查环境并安装 OpenClaw，请稍候。", [
+    "环境检测",
+    "已安装检查",
+    "准备目录",
+    "下载官方 install.sh",
+    "执行安装脚本",
+    "验证安装结果"
   ]);
 
   try {
@@ -464,7 +1158,7 @@ async function runInstallStep() {
 
     if (result.success) {
       updateLastAction("OpenClaw 已安装");
-      renderResultCard("OpenClaw 已准备好", "OpenClaw 已安装完成，下一步请配置 API。", "pass");
+      renderResultCard("OpenClaw 已准备好", "OpenClaw 已安装完成，下一步请配置 API Key。", "pass");
       await refreshVersionInfo({ renderHome: false });
       addAction("下一步：配置 API Key", () => goToConfigure("first"), "primary");
     } else {
@@ -489,17 +1183,19 @@ async function runQuickConfigure(form) {
   const modelChoice = String(form.elements.modelChoice.value || "auto");
   const defaultModel = resolveSelectedModel(form);
 
+  if (!apiKey) {
+    showApiKeyError(form);
+    return;
+  }
+
+  clearApiKeyError(form);
+
   if (defaultModel === null) {
     showCustomModelError(form);
     return;
   }
 
   clearCustomModelError(form);
-
-  if (!apiKey) {
-    renderResultCard("需要 API Key", "请先输入 API Key。", "fail");
-    return;
-  }
 
   setBusy(true);
   updateLastAction("正在配置");
@@ -523,6 +1219,12 @@ async function runQuickConfigure(form) {
       wizardState.configStatus = "配置异常";
       updateStatusCard(configStatus, "配置异常", "fail");
       updateLastAction("配置失败");
+
+      if (isOpenClawMissingMessage(result.message)) {
+        renderOpenClawRequiredPage({ includeRecheck: false });
+        return;
+      }
+
       renderResultCard("快速配置失败", result.message || "OpenClaw 官方配置命令执行失败。", "fail");
       addAction("返回配置", () => goToConfigure("first"), "secondary");
       return;
@@ -544,7 +1246,13 @@ async function runQuickConfigure(form) {
     wizardState.configStatus = "配置异常";
     updateStatusCard(configStatus, "配置异常", "fail");
     updateLastAction("配置失败");
-    renderResultCard("快速配置失败", getErrorMessage(error), "fail");
+
+    const message = getErrorMessage(error);
+    if (isOpenClawMissingMessage(message)) {
+      renderOpenClawRequiredPage({ includeRecheck: false });
+    } else {
+      renderResultCard("快速配置失败", message, "fail");
+    }
   } finally {
     setBusy(false);
   }
@@ -556,7 +1264,7 @@ async function runVerifyStep(options = {}) {
   renderProgress();
   updateLastAction("正在检查");
   updateStatusCard(configStatus, "检查中", "running");
-  renderProgressCard("正在检查 OpenClaw 配置...", "正在检查 OpenClaw 命令、版本和配置文件，请稍候。", [
+  renderProgressCard("正在检查配置", "工具箱正在确认 OpenClaw 是否可以正常调用模型。", [
     "检查 OpenClaw 命令",
     "读取 OpenClaw 版本",
     "检查配置文件",
@@ -580,36 +1288,27 @@ async function runVerifyStep(options = {}) {
       wizardState.verifyStatus = "通过";
       updateStatusCard(configStatus, "已配置", "pass");
       updateLastAction("检查配置通过");
-      renderResultCard("配置已确认", "配置已确认，可以打开控制台。", "pass");
+      renderResultCard("配置完成", "OpenClaw 已经可以使用。你现在可以打开控制台开始使用。", "pass");
       await refreshVersionInfo({ renderHome: false });
-      addAction("下一步：打开控制台", () => goToStep(4), "primary");
+      addAction("打开控制台", openDashboardFromConfigResult, "primary");
+      addAction("返回首页", handleGoHome, "secondary");
     } else if (report.ok) {
       wizardState.pendingQuickConfigVerification = false;
       wizardState.pendingQuickConfigDetails = null;
-      wizardState.verifyStatus = "未确认";
+      wizardState.verifyStatus = "失败";
       updateLastAction(verifySummary.hasConfigPath ? "待确认" : "待配置");
-      renderCheckReport(
-        verifySummary.hasConfigPath
-          ? "检测到可能已有配置，但还不能确认 API Key 是否可用。建议重新配置 API Key，或进入官方配置向导检查。"
-          : "尚未检测到完整配置，请先配置 API Key。",
-        report
-      );
-      addAction("重新配置 API Key", () => goToConfigure("first"), "primary");
-      addAction("官方配置向导", openAdvancedConfigure, "secondary");
-      addAction("问题排查", openLogs, "secondary");
+      renderVerifyFailureResult();
     } else {
       wizardState.verifyStatus = "失败";
       wizardState.configStatus = "配置异常";
       updateStatusCard(configStatus, "配置异常", "fail");
       updateLastAction("检查失败");
-      renderCheckReport("配置可能未完成，请检查 API Key 或重新配置。", report);
-      addAction("返回配置", () => goToConfigure("first"), "secondary");
-      addAction("问题排查", openLogs, "secondary");
+      renderVerifyFailureResult();
     }
   } catch (error) {
     wizardState.verifyStatus = "失败";
     updateStatusCard(configStatus, "配置异常", "fail");
-    renderResultCard("检查失败", getErrorMessage(error), "fail");
+    renderVerifyFailureResult(getErrorMessage(error));
   } finally {
     setBusy(false);
   }
@@ -668,8 +1367,58 @@ async function runUpdateStep() {
   }
 }
 
-async function openDashboard(button) {
-  setBusy(true);
+async function openDashboardFromConfigResult() {
+  if (wizardState.dashboardStatus === "starting") {
+    return;
+  }
+
+  wizardState.dashboardStatus = "starting";
+  wizardState.dashboardMessage = "正在启动 OpenClaw 控制台…";
+  updateLastAction("正在启动控制台");
+  syncConsoleStatus();
+  renderConfigDashboardLaunchResult("正在启动 OpenClaw 控制台，请稍候。", "info");
+
+  try {
+    const result = await window.openClawInstaller.openDashboard();
+
+    if (result.ok) {
+      wizardState.dashboardStatus = "opened";
+      wizardState.dashboardMessage = result.message || "已尝试启动 OpenClaw 控制台，请在浏览器中继续使用。";
+      updateLastAction("启动控制台");
+      syncConsoleStatus();
+      handleGoHome();
+      return;
+    }
+
+    wizardState.dashboardStatus = "failed";
+    wizardState.dashboardMessage = result.message || "控制台打开失败，请稍后重试，或进入问题排查看安装记录。";
+    updateLastAction("控制台打开失败");
+    syncConsoleStatus();
+    renderConfigDashboardLaunchResult(wizardState.dashboardMessage, "fail");
+  } catch (error) {
+    wizardState.dashboardStatus = "failed";
+    wizardState.dashboardMessage = getErrorMessage(error) || "控制台打开失败，请稍后重试，或进入问题排查看安装记录。";
+    updateLastAction("控制台打开失败");
+    syncConsoleStatus();
+    renderConfigDashboardLaunchResult(wizardState.dashboardMessage, "fail");
+  }
+}
+
+function renderConfigDashboardLaunchResult(message, state) {
+  renderResultCard("配置完成", message, state || "pass");
+  addAction("打开控制台", openDashboardFromConfigResult, "primary");
+  addAction("返回首页", handleGoHome, "secondary");
+
+  if (state === "fail") {
+    addAction("问题排查", openLogs, "secondary");
+  }
+}
+
+async function openDashboard() {
+  if (wizardState.dashboardStatus === "starting") {
+    return;
+  }
+
   wizardState.dashboardStatus = "starting";
   wizardState.dashboardMessage = "正在启动 OpenClaw 控制台…";
   updateLastAction("正在启动控制台");
@@ -683,29 +1432,31 @@ async function openDashboard(button) {
       wizardState.dashboardStatus = "opened";
       wizardState.dashboardMessage = result.message || "已尝试启动 OpenClaw 控制台，请在浏览器中继续使用。";
       updateLastAction("启动控制台");
-      syncConsoleStatus();
     } else {
       wizardState.dashboardStatus = "failed";
       wizardState.dashboardMessage = result.message || "控制台打开失败，请稍后重试，或进入问题排查看安装记录。";
       updateLastAction("控制台打开失败");
-      syncConsoleStatus();
     }
-
-    renderDashboardFeedback();
   } catch (error) {
     wizardState.dashboardStatus = "failed";
     wizardState.dashboardMessage = getErrorMessage(error) || "控制台打开失败，请稍后重试，或进入问题排查看安装记录。";
     updateLastAction("控制台打开失败");
+  } finally {
     syncConsoleStatus();
     renderDashboardFeedback();
-  } finally {
-    setBusy(false);
   }
 }
 
 async function stopDashboard() {
-  setBusy(true);
+  if (wizardState.dashboardStatus === "stopping") {
+    return;
+  }
+
+  wizardState.dashboardStatus = "stopping";
+  wizardState.dashboardMessage = "正在停止 OpenClaw 控制台…";
   updateLastAction("正在停止控制台");
+  syncConsoleStatus();
+  renderDashboardFeedback();
 
   try {
     const result = await window.openClawInstaller.stopDashboard();
@@ -714,23 +1465,18 @@ async function stopDashboard() {
       wizardState.dashboardStatus = "stopped";
       wizardState.dashboardMessage = result.message || "已停止 OpenClaw 控制台。";
       updateLastAction("停止控制台");
-      syncConsoleStatus();
     } else {
       wizardState.dashboardStatus = "failed";
       wizardState.dashboardMessage = result.message || "控制台停止失败，请稍后重试，或进入问题排查看日志。";
       updateLastAction("控制台停止失败");
-      syncConsoleStatus();
     }
-
-    renderDashboardFeedback();
   } catch (error) {
     wizardState.dashboardStatus = "failed";
     wizardState.dashboardMessage = getErrorMessage(error) || "控制台停止失败，请稍后重试，或进入问题排查看日志。";
     updateLastAction("控制台停止失败");
+  } finally {
     syncConsoleStatus();
     renderDashboardFeedback();
-  } finally {
-    setBusy(false);
   }
 }
 
@@ -784,16 +1530,11 @@ function createQuickConfigureForm() {
       ["gemini", "Gemini"],
       ["qwen", "Qwen"]
     ]),
-    createInputField("API Key", "apiKey", "password", getProviderPlaceholder("openrouter")),
-    createModelSelectField("默认模型", "modelChoice", "openrouter"),
+    createInputField("API Key", "apiKey", "password", getProviderPlaceholder("openrouter"), "API Key 是必填项。它用于连接你选择的 AI 服务商，本工具不会保存或记录它。"),
+    createModelSelectField("模型", "modelChoice", "openrouter"),
     createInputField("自定义模型名称", "customModel", "text", "例如 provider/model-name"),
-    createParagraph("选择你的 AI 服务商并粘贴 API Key。本工具不会保存、展示或记录你的 API Key。首次使用建议选择自动推荐模型。"),
+    createParagraph("首次使用建议选择自动推荐模型。"),
   );
-
-  const formNotice = document.createElement("div");
-  formNotice.className = "form-inline-error";
-  formNotice.hidden = true;
-  form.appendChild(formNotice);
 
   const providerSelect = form.elements.provider;
   const modelSelect = form.elements.modelChoice;
@@ -815,6 +1556,7 @@ function createQuickConfigureForm() {
     }
     updateCustomModelVisibility(form);
   });
+  apiKeyInput.addEventListener("input", () => clearApiKeyError(form));
   customModelInput.addEventListener("input", () => clearCustomModelError(form));
 
   const actions = document.createElement("div");
@@ -946,19 +1688,22 @@ function updateCustomModelVisibility(form) {
   }
 }
 
+function showApiKeyError(form) {
+  const apiKeyField = form.elements.apiKey.closest(".quick-config-field");
+  showFieldError(apiKeyField, "请先填写 API Key，否则无法完成配置。");
+  form.elements.apiKey.focus();
+}
+
+function clearApiKeyError(form) {
+  const apiKeyField = form.elements.apiKey.closest(".quick-config-field");
+  clearFieldError(apiKeyField);
+}
+
 function showCustomModelError(form) {
-  const notice = form.querySelector(".form-inline-error");
   const customField = form.elements.customModel.closest(".quick-config-field");
   form.elements.modelChoice.value = "custom";
   updateCustomModelVisibility(form);
   form.elements.customModel.focus();
-  customField.classList.add("has-error");
-
-  notice.replaceChildren();
-  notice.hidden = false;
-
-  const message = document.createElement("span");
-  message.textContent = "请输入自定义模型名称，或改用自动推荐。";
 
   const action = document.createElement("button");
   action.type = "button";
@@ -966,17 +1711,44 @@ function showCustomModelError(form) {
   action.textContent = "改用自动推荐";
   action.addEventListener("click", () => useAutoModel(form));
 
-  notice.append(message, action);
+  showFieldError(customField, "请输入自定义模型名称，或改用自动推荐。", action);
 }
 
 function clearCustomModelError(form) {
-  const notice = form.querySelector(".form-inline-error");
   const customField = form.elements.customModel.closest(".quick-config-field");
-  customField.classList.remove("has-error");
+  clearFieldError(customField);
+}
 
-  if (notice) {
-    notice.hidden = true;
-    notice.replaceChildren();
+function showFieldError(field, message, action) {
+  if (!field) {
+    return;
+  }
+
+  clearFieldError(field);
+  field.classList.add("has-error");
+
+  const error = document.createElement("div");
+  error.className = "field-error";
+
+  const text = document.createElement("span");
+  text.textContent = message;
+  error.appendChild(text);
+
+  if (action) {
+    error.appendChild(action);
+  }
+
+  field.appendChild(error);
+}
+
+function clearFieldError(field) {
+  if (!field) {
+    return;
+  }
+
+  field.classList.remove("has-error");
+  for (const error of field.querySelectorAll(".field-error")) {
+    error.remove();
   }
 }
 
@@ -987,7 +1759,7 @@ function useAutoModel(form) {
   updateCustomModelVisibility(form);
 }
 
-function createInputField(labelText, name, type, placeholder) {
+function createInputField(labelText, name, type, placeholder, helpText) {
   const label = document.createElement("label");
   label.className = "quick-config-field";
 
@@ -1001,6 +1773,14 @@ function createInputField(labelText, name, type, placeholder) {
   input.autocomplete = "off";
 
   label.append(span, input);
+
+  if (helpText) {
+    const help = document.createElement("small");
+    help.className = "field-help";
+    help.textContent = helpText;
+    label.appendChild(help);
+  }
+
   return label;
 }
 
@@ -1025,9 +1805,18 @@ function createSelectField(labelText, name, options) {
   return label;
 }
 
+function renderVerifyFailureResult(extraMessage) {
+  const description = extraMessage
+    ? "配置未通过。" + extraMessage
+    : "可能原因：API Key 填写错误、当前模型不可用、网络连接不稳定，或服务商暂时无法访问。";
+  renderResultCard("配置未通过", description, "fail");
+  addAction("重新配置 API Key", () => goToConfigure("first"), "primary");
+  addAction("打开问题排查", openLogs, "secondary");
+}
+
 async function renderPrepareFailure(result) {
   const doctorReport = await readDoctorReportSafely();
-  const card = createCard("需要先处理基础环境", "你的电脑缺少运行 OpenClaw 所需的基础环境。请先按提示安装后重新检查。本工具不会自动安装系统级依赖，也不会修改 PATH。 ");
+  const card = createCard("OpenClaw 准备失败", "OpenClaw 官方安装器未能完成准备。官方安装器通常会处理 Node.js、npm、Git 等运行环境；如果仍然失败，可以进入基础组件准备查看诊断和手动入口。");
 
   if (doctorReport && Array.isArray(doctorReport.checks)) {
     for (const check of doctorReport.checks.filter((item) => item.level === "fail")) {
@@ -1041,7 +1830,22 @@ async function renderPrepareFailure(result) {
   wizardCard.replaceChildren();
   wizardActions.replaceChildren();
   wizardCard.appendChild(card);
-  addAction("重新检查", runInstallStep, "primary");
+  addAction("重试准备 OpenClaw", runInstallStep, "primary");
+  addAction("打开问题排查", () => navigateToPage("troubleshoot"), "secondary");
+  addAction("基础组件准备", renderDependencyPreparationPage, "secondary");
+}
+
+function renderDependencyPreparationPage() {
+  wizardCard.replaceChildren();
+  wizardActions.replaceChildren();
+
+  const card = createCard("基础组件准备", "OpenClaw 官方安装器通常会处理 Node.js、npm、Git。这里仅作为安装失败后的辅助诊断入口，不会静默安装系统组件、修改 PATH 或自动安装 Homebrew。");
+  card.appendChild(createNotice("npm 通常随 Node.js 一起安装；Git 可通过 macOS Command Line Tools 准备。", "info"));
+  wizardCard.appendChild(card);
+
+  addAction("打开 Node.js 官方下载页", () => openExternalUrl("https://nodejs.org/zh-cn/download"), "secondary");
+  addAction("准备 Git / Command Line Tools", () => copyText("xcode-select --install"), "secondary");
+  addAction("重新检查环境", runDoctorStep, "secondary");
 }
 
 async function readDoctorReportSafely() {
@@ -1060,7 +1864,7 @@ function appendDependencyRepairSuggestions(card, checks) {
     .toLowerCase();
 
   if (failedText.includes("node") || failedText.includes("npm")) {
-    card.appendChild(createNotice("需要先安装 Node.js。OpenClaw 需要 Node.js 和 npm 才能运行。安装 Node.js LTS 版本后，通常会同时安装 npm。", "warning"));
+    card.appendChild(createNotice("OpenClaw 官方安装器通常会自动处理 Node.js / npm。若安装失败，可在这里查看并手动准备。", "warning"));
     const actions = document.createElement("div");
     actions.className = "configure-guide-actions";
     actions.appendChild(createButton("打开 Node.js 下载页面", () => openExternalUrl("https://nodejs.org/zh-cn/download"), "secondary"));
@@ -1069,7 +1873,7 @@ function appendDependencyRepairSuggestions(card, checks) {
   }
 
   if (failedText.includes("git")) {
-    card.appendChild(createNotice("需要先安装 Git。OpenClaw 需要 Git 来完成部分安装或运行步骤。你可以通过 macOS 命令行工具安装 Git。", "warning"));
+    card.appendChild(createNotice("OpenClaw 官方安装器可能会处理 Git 或相关开发者工具。若安装失败，可尝试安装 Command Line Tools。", "warning"));
     const actions = document.createElement("div");
     actions.className = "configure-guide-actions";
     actions.appendChild(createButton("复制命令：xcode-select --install", () => copyText("xcode-select --install"), "secondary"));
@@ -1200,8 +2004,7 @@ function appendUpdateNotice(card) {
 
 function dismissUpdateNotice() {
   wizardState.updateNoticeDismissed = true;
-  closeAboutMenu();
-  renderWizard();
+  renderAboutMenu();
 }
 
 function updateAboutIndicator() {
@@ -1222,6 +2025,7 @@ function toggleAboutMenu() {
   appStage.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
 
   if (shouldOpen) {
+    closeAppearanceMenu();
     renderAboutMenu();
   }
 }
@@ -1248,10 +2052,26 @@ function renderAboutMenu() {
     ? (version.updateAvailable ? "发现新版本" : "已是最新")
     : "暂时无法检查";
 
+  const header = document.createElement("div");
+  header.className = "about-menu-header";
+
   const title = document.createElement("div");
   title.className = "about-menu-title";
-  title.textContent = "OpenClaw 工具箱";
-  aboutMenu.appendChild(title);
+  title.textContent = "关于 OpenClaw 工具箱";
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "about-menu-close";
+  closeButton.setAttribute("aria-label", "关闭关于本工具");
+  closeButton.textContent = "×";
+  closeButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeAboutMenu();
+  });
+
+  header.append(title, closeButton);
+  aboutMenu.appendChild(header);
 
   aboutMenu.appendChild(createAboutSectionTitle("版本与更新"));
   aboutMenu.appendChild(createAboutRow("OpenClaw 当前版本", version.currentVersion || wizardState.openClawVersion || "未知"));
@@ -1265,10 +2085,20 @@ function renderAboutMenu() {
 
   const updateActions = document.createElement("div");
   updateActions.className = "about-menu-actions";
-  updateActions.appendChild(createAboutButton("检查更新", checkUpdateFromAbout));
+  const checkButton = createAboutButton(wizardState.updateCheckStatus === "checking" ? "检查中..." : "检查更新", checkUpdateFromAbout);
+  checkButton.disabled = wizardState.updateCheckStatus === "checking";
 
-  if (version.updateAvailable) {
-    updateActions.appendChild(createAboutButton("立即更新", () => {
+  if (wizardState.updateCheckStatus === "checking") {
+    const spinner = document.createElement("span");
+    spinner.className = "about-update-spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    checkButton.prepend(spinner);
+  }
+
+  updateActions.appendChild(checkButton);
+
+  if (version.updateAvailable && !wizardState.updateNoticeDismissed) {
+    updateActions.appendChild(createAboutButton("现在更新", () => {
       closeAboutMenu();
       runUpdateStep();
     }));
@@ -1277,27 +2107,14 @@ function renderAboutMenu() {
 
   aboutMenu.appendChild(updateActions);
 
-  aboutMenu.appendChild(createAboutSectionTitle("维护与诊断"));
-  const maintenanceLinks = document.createElement("div");
-  maintenanceLinks.className = "about-menu-links";
-  maintenanceLinks.appendChild(createAboutLink("问题排查", () => {
+  aboutMenu.appendChild(createAboutSectionTitle("帮助入口"));
+  const helpLinks = document.createElement("div");
+  helpLinks.className = "about-menu-links";
+  helpLinks.appendChild(createAboutLink("打开问题排查", () => {
     closeAboutMenu();
-    openLogs();
+    navigateToPage("troubleshoot");
   }));
-  maintenanceLinks.appendChild(createAboutLink("重新检查环境", () => {
-    closeAboutMenu();
-    rerunEnvironmentCheck();
-  }));
-  aboutMenu.appendChild(maintenanceLinks);
-
-  aboutMenu.appendChild(createAboutSectionTitle("高级"));
-  const advancedLinks = document.createElement("div");
-  advancedLinks.className = "about-menu-links";
-  advancedLinks.appendChild(createAboutLink("官方配置向导", () => {
-    closeAboutMenu();
-    openAdvancedConfigure();
-  }));
-  aboutMenu.appendChild(advancedLinks);
+  aboutMenu.appendChild(helpLinks);
 
   const technical = document.createElement("details");
   technical.className = "about-technical";
@@ -1307,6 +2124,8 @@ function renderAboutMenu() {
   commands.className = "about-technical-body";
   commands.appendChild(createAboutRow("安装助手命令", "openclaw-installer"));
   commands.appendChild(createAboutRow("OpenClaw 命令", "openclaw"));
+  commands.appendChild(createAboutRow("日志目录", "~/.openclaw-installer/logs/"));
+  commands.appendChild(createAboutRow("配置状态文件", "~/.openclaw-installer/config-state.json"));
   technical.append(summary, commands);
   aboutMenu.appendChild(technical);
 }
@@ -1324,17 +2143,21 @@ function createUpdateCheckFeedback(version) {
   }
 
   if (wizardState.updateCheckStatus === "latest") {
-    return createAboutFeedback("已是最新版本", "pass");
+    return createAboutFeedback("已检查更新，当前已是最新版本。", "pass");
   }
 
   if (wizardState.updateCheckStatus === "available") {
+    if (wizardState.updateNoticeDismissed) {
+      return null;
+    }
+
     const currentVersion = version.currentVersion || wizardState.openClawVersion || "未知";
     const latestVersion = version.latestVersion || "未知";
-    return createAboutFeedback("发现 OpenClaw 新版本：" + currentVersion + " → " + latestVersion, "warning");
+    return createAboutFeedback("发现新版本：" + currentVersion + " → " + latestVersion + "。可安装新版本。", "warning");
   }
 
   if (wizardState.updateCheckStatus === "failed") {
-    return createAboutFeedback("暂时无法检查最新版本，请稍后再试。", "warning");
+    return createAboutFeedback("暂时无法检查更新，不影响当前使用。", "warning");
   }
 
   return null;
@@ -1366,7 +2189,11 @@ function createAboutButton(label, handler) {
   button.type = "button";
   button.className = "about-menu-button";
   button.textContent = label;
-  button.addEventListener("click", handler);
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    handler(event);
+  });
   return button;
 }
 
@@ -1377,18 +2204,28 @@ function createAboutLink(label, handler) {
 }
 
 async function checkUpdateFromAbout() {
+  if (wizardState.updateCheckStatus === "checking") {
+    return;
+  }
+
   wizardState.updateCheckStatus = "checking";
+  wizardState.updateNoticeDismissed = false;
   updateLastAction("正在检查更新");
   renderAboutMenu();
 
-  const version = await refreshVersionInfo({ renderHome: true });
+  try {
+    const version = await refreshVersionInfo({ renderHome: false });
 
-  if (!version || !version.canCheckLatest) {
+    if (!version || !version.canCheckLatest) {
+      wizardState.updateCheckStatus = "failed";
+      updateLastAction("检查更新失败");
+    } else {
+      wizardState.updateCheckStatus = version.updateAvailable ? "available" : "latest";
+      updateLastAction("检查更新完成");
+    }
+  } catch (error) {
     wizardState.updateCheckStatus = "failed";
     updateLastAction("检查更新失败");
-  } else {
-    wizardState.updateCheckStatus = version.updateAvailable ? "available" : "latest";
-    updateLastAction("检查更新完成");
   }
 
   renderAboutMenu();
@@ -1473,6 +2310,10 @@ function appendDashboardNotice(card) {
     card.appendChild(createNotice(wizardState.dashboardMessage || "已尝试启动 OpenClaw 控制台，请在浏览器中继续使用。", "pass"));
   }
 
+  if (wizardState.dashboardStatus === "stopping") {
+    card.appendChild(createNotice(wizardState.dashboardMessage || "正在停止 OpenClaw 控制台…", "info"));
+  }
+
   if (wizardState.dashboardStatus === "failed") {
     card.appendChild(createNotice(wizardState.dashboardMessage || "控制台打开失败，请稍后重试，或进入问题排查看安装记录。", "fail"));
   }
@@ -1483,9 +2324,7 @@ function getDashboardButtonLabel() {
 }
 
 function renderDashboardFeedback() {
-  const stepId = steps[wizardState.currentStep].id;
-
-  if (stepId !== "welcome") {
+  if (wizardState.currentStep !== 0) {
     wizardState.currentStep = 4;
   }
 
@@ -1494,35 +2333,20 @@ function renderDashboardFeedback() {
 
 function renderUtilities() {
   wizardUtilities.replaceChildren();
+}
 
-  const intro = document.createElement("span");
-  intro.className = "advanced-options-label";
-  intro.textContent = "高级选项：普通用户通常不需要使用";
-  wizardUtilities.appendChild(intro);
-
-  const advanced = document.createElement("button");
-  advanced.type = "button";
-  advanced.className = "link-button";
-  advanced.textContent = "官方配置向导";
-  advanced.addEventListener("click", openAdvancedConfigure);
-
-  const doctor = document.createElement("button");
-  doctor.type = "button";
-  doctor.className = "link-button";
-  doctor.textContent = "重新检查环境";
-  doctor.addEventListener("click", rerunEnvironmentCheck);
-
-  const logs = document.createElement("button");
-  logs.type = "button";
-  logs.className = "link-button";
-  logs.textContent = "问题排查";
-  logs.addEventListener("click", openLogs);
-
-  wizardUtilities.append(advanced, doctor, logs);
+function createUtilityLink(label, handler) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "link-button";
+  button.textContent = label;
+  button.disabled = isDashboardActionDisabled(label);
+  button.addEventListener("click", handler);
+  return button;
 }
 
 async function rerunEnvironmentCheck() {
-  if (isReadyToUse() && wizardState.currentStep === 0) {
+  if (wizardState.currentPage === "home" && isReadyToUse() && wizardState.currentStep === 0) {
     return runToolboxDoctorCheck();
   }
 
@@ -1590,6 +2414,56 @@ function appendToolboxDiagnostics(card) {
   card.appendChild(list);
 }
 
+async function runStatusCheck() {
+  const returnPage = wizardState.currentPage;
+  setBusy(true);
+  updateLastAction("正在检查状态");
+  renderProgressCard("正在检查状态", "工具箱正在检查 OpenClaw 安装、版本和配置状态。", [
+    "检查 OpenClaw 命令",
+    "读取 OpenClaw 版本",
+    "检查配置状态"
+  ]);
+
+  try {
+    await loadGuiConfigState();
+    const report = await window.openClawInstaller.runVerify();
+    wizardState.lastVerifyReport = report;
+    syncVerifyStatus(report, { confirmConfig: hasGuiConfigState() });
+    await refreshVersionInfo({ renderHome: false });
+    updateLastAction(report.ok ? "状态检查完成" : "状态需要处理");
+    renderResultCard(report.ok ? "状态检查完成" : "状态需要处理", report.ok ? "已完成 OpenClaw 基础状态检查。" : "请根据提示重新配置或进入问题排查。", report.ok ? "pass" : "warning");
+    addAction(getStatusCheckReturnLabel(returnPage), () => navigateToPage(getStatusCheckReturnPage(returnPage)), "primary");
+  } catch (error) {
+    updateLastAction("状态检查失败");
+    renderResultCard("状态检查失败", getErrorMessage(error), "fail");
+    addAction(getStatusCheckReturnLabel(returnPage), () => navigateToPage(getStatusCheckReturnPage(returnPage)), "primary");
+  } finally {
+    setBusy(false);
+  }
+}
+
+function getStatusCheckReturnPage(page) {
+  return page === "troubleshoot" ? "troubleshoot" : "home";
+}
+
+function getStatusCheckReturnLabel(page) {
+  return page === "troubleshoot" ? "返回问题排查" : "返回首页";
+}
+
+function getConfiguredAtLabel() {
+  if (!wizardState.guiConfigState || !wizardState.guiConfigState.configuredAt) {
+    return "尚未记录";
+  }
+
+  return wizardState.guiConfigState.configuredAt.slice(0, 10);
+}
+
+function getConfiguredProviderLabel() {
+  return wizardState.guiConfigState && wizardState.guiConfigState.provider
+    ? wizardState.guiConfigState.provider
+    : "未知";
+}
+
 function addConsoleActions() {
   addAction("启动控制台", openDashboard, "primary");
   addAction("停止控制台", stopDashboard, "secondary");
@@ -1611,9 +2485,21 @@ function createButton(label, handler, kind) {
   button.type = "button";
   button.className = kind === "primary" ? "inline-action-button" : "secondary-action-button";
   button.textContent = label;
-  button.disabled = wizardState.isBusy;
+  button.disabled = wizardState.isBusy || isDashboardActionDisabled(label);
   button.addEventListener("click", handler);
   return button;
+}
+
+function isDashboardActionDisabled(label) {
+  if (label === "启动控制台" || label === "打开控制台") {
+    return wizardState.dashboardStatus === "starting";
+  }
+
+  if (label === "停止控制台") {
+    return wizardState.dashboardStatus === "stopping";
+  }
+
+  return false;
 }
 
 async function refreshVersionInfo(options = {}) {
@@ -1662,6 +2548,7 @@ async function refreshVersionInfo(options = {}) {
 }
 
 function goToConfigure(mode) {
+  wizardState.currentPage = "home";
   wizardState.configureMode = mode || "first";
   goToStep(2);
 }
@@ -1710,17 +2597,34 @@ async function persistGuiConfigState() {
 }
 
 function handleGoHome() {
+  navigateToPage("home");
+}
+
+function navigateToPage(page, options = {}) {
   if (wizardState.isBusy || wizardState.isProbingStartup) {
     updateLastAction("当前任务进行中");
     return;
   }
 
-  wizardState.currentStep = 0;
+  wizardState.currentPage = page || "home";
+
+  if (wizardState.currentPage === "home") {
+    wizardState.currentStep = 0;
+  }
+
+  if (wizardState.currentPage === "configure") {
+    wizardState.currentStep = 0;
+    wizardState.configureMode = options.mode || (wizardState.configStatus === "已配置" ? "reconfigure" : "first");
+  }
+
+  closeAboutMenu();
+  closeAppearanceMenu();
   renderWizard();
 }
 
 function goToStep(index) {
-  wizardState.currentStep = Math.max(0, Math.min(index, steps.length - 1));
+  wizardState.currentPage = "home";
+  wizardState.currentStep = Math.max(0, Math.min(index, steps.length));
   renderWizard();
 }
 
@@ -1730,6 +2634,7 @@ function setBusy(isBusy) {
     button.disabled = isBusy;
   }
   updateHomeButtonState();
+  updateSidebarState();
 }
 
 function updateHomeButtonState() {
@@ -1738,6 +2643,13 @@ function updateHomeButtonState() {
   }
 
   homeButton.disabled = wizardState.isBusy || wizardState.isProbingStartup;
+}
+
+function updateSidebarState() {
+  for (const button of sidebarButtons) {
+    button.disabled = wizardState.isBusy || wizardState.isProbingStartup;
+    button.classList.toggle("active", button.dataset.page === wizardState.currentPage);
+  }
 }
 
 async function probeStartupState() {
@@ -1786,12 +2698,36 @@ async function probeStartupState() {
   }
 }
 
+function getHomeState() {
+  if (wizardState.installStatus === "已安装" && wizardState.configStatus === "已配置" && wizardState.verifyStatus === "通过" && hasGuiConfigState()) {
+    return "ready";
+  }
+
+  if (wizardState.installStatus === "已安装") {
+    return "installed-unconfigured";
+  }
+
+  return "new-user";
+}
+
 function isReadyToUse() {
-  return wizardState.installStatus === "已安装" && wizardState.configStatus === "已配置";
+  return getHomeState() === "ready";
 }
 
 function isToolboxHome() {
   return wizardState.currentStep === 0 && isReadyToUse() && !wizardState.isProbingStartup;
+}
+
+function getConfiguredModelLabel() {
+  if (!wizardState.guiConfigState) {
+    return "自动推荐";
+  }
+
+  if (wizardState.guiConfigState.modelMode === "auto" || !wizardState.guiConfigState.model) {
+    return "自动推荐";
+  }
+
+  return wizardState.guiConfigState.model;
 }
 
 function getHomeDashboardButtonLabel() {
@@ -1912,17 +2848,55 @@ function sanitizeActionSummary(value) {
     .slice(0, 40) || "尚未操作";
 }
 
-function recordRecentAction(value) {
+function normalizeRecentAction(value) {
+  const action = sanitizeActionSummary(value);
+  const aliases = {
+    "启动控制台": "控制台启动成功",
+    "停止控制台": "控制台已停止",
+    "配置完成": "API Key 配置完成",
+    "检测完成": "环境检查完成",
+    "环境检查正常": "环境检查完成",
+    "状态检查完成": "状态检查完成",
+    "检查更新完成": "检查更新完成",
+    "检查配置通过": "检查配置通过",
+    "OpenClaw 已安装": "OpenClaw 已安装",
+    "OpenClaw 已更新": "OpenClaw 已更新"
+  };
+
+  return aliases[action] || action;
+}
+
+function isMeaningfulRecentAction(value) {
   if (!value || value === "尚未操作") {
+    return false;
+  }
+
+  if (/正在|识别|检测中|识别中|准备中|待确认|待配置|尚未|已准备好|当前任务进行中/.test(value)) {
+    return false;
+  }
+
+  return /完成|成功|通过|已停止|已启动|已配置|已安装|已更新/.test(value);
+}
+
+function getEffectiveRecentActions(limit) {
+  return wizardState.recentActions
+    .filter(isMeaningfulRecentAction)
+    .slice(0, limit || 5);
+}
+
+function recordRecentAction(value) {
+  const action = normalizeRecentAction(value);
+
+  if (!isMeaningfulRecentAction(action)) {
     renderRecentStatusMenu();
     return;
   }
 
-  if (wizardState.recentActions[0] !== value) {
-    wizardState.recentActions.unshift(value);
+  if (wizardState.recentActions[0] !== action) {
+    wizardState.recentActions.unshift(action);
   }
 
-  wizardState.recentActions = wizardState.recentActions.slice(0, 5);
+  wizardState.recentActions = getEffectiveRecentActions(5);
   renderRecentStatusMenu();
 }
 
@@ -1956,7 +2930,9 @@ function renderRecentStatusMenu() {
 
   recentStatusMenu.replaceChildren();
 
-  if (!wizardState.recentActions.length) {
+  const recentActions = getEffectiveRecentActions(5);
+
+  if (!recentActions.length) {
     const empty = document.createElement("div");
     empty.className = "recent-status-empty";
     empty.textContent = "暂无最近操作";
@@ -1964,7 +2940,7 @@ function renderRecentStatusMenu() {
     return;
   }
 
-  for (const action of wizardState.recentActions.slice(0, 5)) {
+  for (const action of recentActions) {
     const item = document.createElement("div");
     item.className = "recent-status-menu-item";
     item.textContent = action;

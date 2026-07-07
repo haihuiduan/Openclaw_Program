@@ -8,8 +8,9 @@ const { runVerify: runCoreVerify } = require("../../core/verify");
 const { runWorkflow } = require("../../core/workflow/engine");
 const { commandExists, runCommand, runDetachedCommand } = require("../../utils/shell");
 
-function runDoctor(config) {
-  return runCoreDoctor(config);
+async function runDoctor(config, options = {}) {
+  const report = await runCoreDoctor(config);
+  return applyMissingDepsDevOverride(report, options);
 }
 
 function runVerify(config) {
@@ -81,6 +82,100 @@ function sanitizeSingleLine(output) {
     .trim()
     .split("\n")
     .filter(Boolean)[0] || "";
+}
+
+function applyMissingDepsDevOverride(report, options = {}) {
+  const missingDeps = parseMissingDepsDevOverride(options);
+
+  if (!missingDeps.size) {
+    return report;
+  }
+
+  const checks = (Array.isArray(report.checks) ? report.checks : []).map((check) => {
+    if (missingDeps.has("node") && isNodeCheck(check)) {
+      return createMissingDependencyCheck(check, "node");
+    }
+
+    if (missingDeps.has("npm") && isCommandCheck(check, "npm")) {
+      return createMissingDependencyCheck(check, "npm");
+    }
+
+    if (missingDeps.has("git") && isCommandCheck(check, "git")) {
+      return createMissingDependencyCheck(check, "git");
+    }
+
+    return check;
+  });
+
+  return {
+    ...report,
+    ok: !checks.some((check) => check.level === "fail"),
+    checks
+  };
+}
+
+function parseMissingDepsDevOverride(options = {}) {
+  if (options.isDevRuntime !== true) {
+    return new Set();
+  }
+
+  const rawValue = String(process.env.OPENCLAW_TEST_MISSING_DEPS || "").trim().toLowerCase();
+
+  if (!rawValue) {
+    return new Set();
+  }
+
+  const allowed = new Set(["node", "npm", "git"]);
+  const values = rawValue.split(",").map((item) => item.trim()).filter(Boolean);
+
+  if (values.includes("all")) {
+    return new Set(allowed);
+  }
+
+  return new Set(values.filter((item) => allowed.has(item)));
+}
+
+function isNodeCheck(check) {
+  return String(check.name || "") === "Node.js 版本" || isCommandCheck(check, "node");
+}
+
+function isCommandCheck(check, command) {
+  return String(check.name || "") === `系统命令：${command}`;
+}
+
+function createMissingDependencyCheck(check, command) {
+  const meta = {
+    node: {
+      code: "NODE_NOT_FOUND",
+      message: "未找到 node，安装或运行 OpenClaw 可能需要该工具。",
+      suggestion: "请安装 Node.js LTS 版本。安装 Node.js 后通常会自带 npm。",
+      repairAction: "install_node"
+    },
+    npm: {
+      code: "NPM_NOT_FOUND",
+      message: "未找到 npm，安装或运行 OpenClaw 可能需要该工具。",
+      suggestion: "请安装 Node.js LTS 版本。安装 Node.js 后通常会自带 npm。",
+      repairAction: "install_node"
+    },
+    git: {
+      code: "GIT_NOT_FOUND",
+      message: "未找到 git，安装或运行 OpenClaw 可能需要该工具。",
+      suggestion: "请安装 Git，或在 macOS 上通过 Xcode Command Line Tools 安装。",
+      repairAction: "install_git"
+    }
+  }[command];
+
+  return {
+    ...check,
+    ok: false,
+    level: "fail",
+    category: command === "node" ? "runtime" : "dependency",
+    code: meta.code,
+    message: meta.message,
+    suggestion: meta.suggestion,
+    repairable: true,
+    repairAction: meta.repairAction
+  };
 }
 
 

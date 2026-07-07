@@ -7,72 +7,98 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <main class="app-shell">
-      <header class="app-header">
-        <div>
-          <p class="eyebrow">OPENCLAW 工具箱</p>
-          <h1>OpenClaw 工具箱</h1>
-          <p class="subtitle">适用于 macOS 的 OpenClaw 安装、配置与控制台管理工具</p>
+    <main class="app-shell app-layout">
+      <aside class="sidebar" aria-label="OpenClaw 工具箱导航">
+        <div class="sidebar-brand">
+          <span>OpenClaw</span>
+          <strong>工具箱</strong>
         </div>
-        <div class="header-actions">
-          <button type="button" class="home-button" id="homeButton">首页</button>
+
+        <div class="sidebar-section">
+          <p class="sidebar-section-title">核心入口</p>
+          <button type="button" class="sidebar-link active" id="homeButton" data-page="home">首页</button>
+          <button type="button" class="sidebar-link" data-page="configure">配置 API Key</button>
+          <button type="button" class="sidebar-link" data-page="troubleshoot">问题排查</button>
+        </div>
+
+        <div class="sidebar-bottom">
+          <p class="sidebar-section-title">更多</p>
           <div class="about-menu-wrapper">
-            <button type="button" class="status-pill" id="appStage" aria-expanded="false">关于本工具</button>
+            <button type="button" class="sidebar-link sidebar-secondary-link" id="appStage" aria-expanded="false">关于本工具</button>
             <div class="about-menu" id="aboutMenu" hidden></div>
           </div>
-        </div>
-      </header>
-
-      <div class="compact-status-bar" aria-label="当前状态">
-        <span class="status-item status-neutral status-environment">
-          <span class="status-label">环境</span>
-          <strong id="environmentStatus">未检测</strong>
-        </span>
-        <span class="status-separator">·</span>
-        <span class="status-item status-neutral">
-          <span class="status-label">OpenClaw</span>
-          <strong id="openClawStatus">未知</strong>
-        </span>
-        <span class="status-separator">·</span>
-        <span class="status-item status-neutral">
-          <span class="status-label">配置</span>
-          <strong id="configStatus">待配置</strong>
-        </span>
-        <span class="status-separator">·</span>
-        <span class="status-item status-neutral">
-          <span class="status-label">版本</span>
-          <strong id="versionStatus">未知</strong>
-        </span>
-        <span class="status-separator">·</span>
-        <span class="status-item status-neutral recent-status-item">
-          <button type="button" class="recent-status-button" id="recentStatusButton" aria-expanded="false">
-            <span class="status-label">最近</span>
-            <strong id="lastAction">尚未操作</strong>
-            <span class="recent-status-arrow">▼</span>
-          </button>
-          <div class="recent-status-menu" id="recentStatusMenu" hidden>
-            <div class="recent-status-empty">暂无最近操作</div>
+          <div class="appearance-menu-wrapper">
+            <button type="button" class="sidebar-link sidebar-secondary-link" id="appearanceButton" aria-expanded="false">夜间模式 <span class="sidebar-link-note" id="appearanceModeLabel">跟随系统</span></button>
+            <div class="appearance-menu" id="appearanceMenu" hidden>
+              <div class="appearance-menu-title">外观</div>
+              <button type="button" class="appearance-menu-option active" data-theme-option="system">跟随系统</button>
+              <button type="button" class="appearance-menu-option" data-theme-option="light">浅色模式</button>
+              <button type="button" class="appearance-menu-option" data-theme-option="dark">深色模式</button>
+            </div>
           </div>
-        </span>
-      </div>
+          <button type="button" class="sidebar-link sidebar-secondary-link" data-page="settings">设置</button>
+          <div class="sidebar-mini-status">
+            <span>一切正常</span>
+            <strong>v1.0.0</strong>
+          </div>
+        </div>
+      </aside>
 
-      <section class="wizard-panel" aria-labelledby="wizardTitle">
-        <div class="section-heading">
-          <h2 id="wizardTitle">开始使用 OpenClaw</h2>
-          <p>按提示完成 OpenClaw 准备、API Key 配置和控制台启动。首次使用通常只需要几分钟。</p>
+      <div class="app-main">
+        <header class="app-header">
+          <div>
+            <p class="eyebrow">OPENCLAW 工具箱</p>
+            <h1>OpenClaw 工具箱</h1>
+            <p class="subtitle">适用于 macOS 的 OpenClaw 安装、配置与控制台管理工具</p>
+          </div>
+        </header>
+
+        <div class="compact-status-bar" aria-label="当前状态">
+          <span class="status-item status-neutral status-environment">
+            <span class="status-label">环境</span>
+            <strong id="environmentStatus">未检测</strong>
+          </span>
+          <span class="status-separator">·</span>
+          <span class="status-item status-neutral">
+            <span class="status-label">OpenClaw</span>
+            <strong id="openClawStatus">未知</strong>
+          </span>
+          <span class="status-separator">·</span>
+          <span class="status-item status-neutral">
+            <span class="status-label">配置</span>
+            <strong id="configStatus">待配置</strong>
+          </span>
+          <span class="status-separator">·</span>
+          <span class="status-item status-neutral">
+            <span class="status-label">版本</span>
+            <strong id="versionStatus">未知</strong>
+          </span>
+          <span class="status-separator">·</span>
+          <span class="status-item status-neutral recent-status-item">
+            <button type="button" class="recent-status-button" id="recentStatusButton" aria-expanded="false">
+              <span class="status-label">最近</span>
+              <strong id="lastAction">尚未操作</strong>
+              <span class="recent-status-arrow">▼</span>
+            </button>
+            <div class="recent-status-menu" id="recentStatusMenu" hidden>
+              <div class="recent-status-empty">暂无最近操作</div>
+            </div>
+          </span>
         </div>
 
-        <div id="wizardProgress" class="wizard-progress" aria-label="安装步骤进度"></div>
-        <div id="wizardCard" class="wizard-card" aria-live="polite"></div>
-        <div id="wizardActions" class="wizard-actions"></div>
-        <div id="wizardUtilities" class="wizard-utilities"></div>
-      </section>
+        <section class="wizard-panel" aria-labelledby="wizardTitle">
+          <div class="section-heading">
+            <h2 id="wizardTitle">开始使用 OpenClaw</h2>
+            <p>按提示完成 OpenClaw 准备、API Key 配置和控制台启动。首次使用通常只需要几分钟。</p>
+          </div>
 
-      <footer class="app-footer">
-        <span>技术信息</span>
-        <span>安装助手命令：openclaw-installer</span>
-        <span>OpenClaw 命令：openclaw</span>
-      </footer>
+          <div id="wizardProgress" class="wizard-progress" aria-label="安装步骤进度"></div>
+          <div id="wizardCard" class="wizard-card" aria-live="polite"></div>
+          <div id="wizardActions" class="wizard-actions"></div>
+          <div id="wizardUtilities" class="wizard-utilities"></div>
+        </section>
+
+      </div>
     </main>
 
     <script src="./renderer.js"></script>
