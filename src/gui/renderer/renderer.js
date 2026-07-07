@@ -462,7 +462,7 @@ function renderStandaloneConfigurePage() {
 }
 
 function renderOpenClawRequiredPage(options = {}) {
-  const card = createCard("需要先准备 OpenClaw", "当前未检测到 OpenClaw。请先完成 OpenClaw 准备步骤，然后再配置 API Key。OpenClaw 官方安装器会检查并处理必要的运行环境。");
+  const card = createCard("需要先准备 OpenClaw", "当前未检测到 OpenClaw。请先完成 OpenClaw 准备步骤，然后再配置 API Key。工具箱会调用 OpenClaw 官方安装器完成准备。大多数情况下，你不需要手动安装 Node.js、npm 或 Git。");
   card.classList.add("toolbox-page-card");
   wizardCard.appendChild(card);
 
@@ -537,6 +537,12 @@ function renderTroubleshootPage() {
     ["OpenClaw 配置", getTroubleshootConfigLabel()],
     ["GUI 配置确认", hasGuiConfigState() ? "正常" : "待确认"],
     ["控制台状态", getConsoleStatusLabel()]
+  ]));
+
+  page.appendChild(createInfoCard("基础组件诊断说明", [
+    ["Node.js", "官方安装器通常会自动处理；若安装失败，可在这里查看状态。"],
+    ["npm", "通常随 Node.js 一起安装；若安装失败，可在这里查看状态。"],
+    ["Git", "安装过程可能会用到 Git 或相关开发者工具；若安装失败，可尝试安装 Command Line Tools。"]
   ]));
 
   const technical = document.createElement("details");
@@ -707,7 +713,7 @@ function renderNewUserHome() {
 
   const helper = document.createElement("p");
   helper.className = "first-run-helper";
-  helper.textContent = "本工具不会保存、展示或记录你的 API Key。API Key 配置会在 OpenClaw 安装完成后进行。若安装失败，可在问题排查中查看基础组件准备建议。";
+  helper.textContent = "大多数情况下，你不需要手动安装 Node.js、npm 或 Git。若安装失败，可以进入问题排查查看基础组件建议。";
 
   actionPanel.append(actionTitle, actionDescription, actionRow, helper);
   intro.append(eyebrow, title, description, statusRow, actionPanel);
@@ -1023,7 +1029,7 @@ function formatProviderLabel(provider) {
 
 function renderPrepareStep() {
   const card = createCard("正在准备 OpenClaw", "工具箱正在检查环境并安装 OpenClaw，请稍候。");
-  card.appendChild(createParagraph("本工具会自动安装 OpenClaw 本体，但不会在未经确认的情况下修改你的系统环境。如果缺少基础环境，请先按提示处理。"));
+  card.appendChild(createParagraph("工具箱会调用 OpenClaw 官方安装器准备 OpenClaw。大多数情况下，你不需要手动处理 Node.js、npm 或 Git；如果准备失败，可以进入问题排查查看建议。"));
 
   if (wizardState.openClawVersion) {
     card.appendChild(createNotice("检测到 OpenClaw 已安装，版本：" + wizardState.openClawVersion + "。", "pass"));
@@ -1164,7 +1170,6 @@ async function runInstallStep() {
     } else {
       updateLastAction("准备失败");
       await renderPrepareFailure(result);
-      addAction("问题排查", openLogs, "secondary");
     }
   } catch (error) {
     if (wizardState.installStatus !== "已安装") {
@@ -1816,7 +1821,7 @@ function renderVerifyFailureResult(extraMessage) {
 
 async function renderPrepareFailure(result) {
   const doctorReport = await readDoctorReportSafely();
-  const card = createCard("OpenClaw 准备失败", "OpenClaw 官方安装器未能完成准备。官方安装器通常会处理 Node.js、npm、Git 等运行环境；如果仍然失败，可以进入基础组件准备查看诊断和手动入口。");
+  const card = createCard("准备 OpenClaw 失败", "OpenClaw 官方安装器没有完成安装。你可以重试，或者进入问题排查查看网络、权限和基础组件建议。");
 
   if (doctorReport && Array.isArray(doctorReport.checks)) {
     for (const check of doctorReport.checks.filter((item) => item.level === "fail")) {
@@ -1832,7 +1837,7 @@ async function renderPrepareFailure(result) {
   wizardCard.appendChild(card);
   addAction("重试准备 OpenClaw", runInstallStep, "primary");
   addAction("打开问题排查", () => navigateToPage("troubleshoot"), "secondary");
-  addAction("基础组件准备", renderDependencyPreparationPage, "secondary");
+  addAction("查看基础组件建议", renderDependencyPreparationPage, "secondary");
 }
 
 function renderDependencyPreparationPage() {
@@ -1864,7 +1869,7 @@ function appendDependencyRepairSuggestions(card, checks) {
     .toLowerCase();
 
   if (failedText.includes("node") || failedText.includes("npm")) {
-    card.appendChild(createNotice("OpenClaw 官方安装器通常会自动处理 Node.js / npm。若安装失败，可在这里查看并手动准备。", "warning"));
+    card.appendChild(createNotice("OpenClaw 官方安装器通常会自动处理 Node.js / npm。若仍然失败，可以在这里查看状态并手动准备。", "warning"));
     const actions = document.createElement("div");
     actions.className = "configure-guide-actions";
     actions.appendChild(createButton("打开 Node.js 下载页面", () => openExternalUrl("https://nodejs.org/zh-cn/download"), "secondary"));
@@ -1873,7 +1878,7 @@ function appendDependencyRepairSuggestions(card, checks) {
   }
 
   if (failedText.includes("git")) {
-    card.appendChild(createNotice("OpenClaw 官方安装器可能会处理 Git 或相关开发者工具。若安装失败，可尝试安装 Command Line Tools。", "warning"));
+    card.appendChild(createNotice("OpenClaw 安装过程可能会用到 Git 或相关开发者工具。若仍然失败，可尝试安装 Command Line Tools。", "warning"));
     const actions = document.createElement("div");
     actions.className = "configure-guide-actions";
     actions.appendChild(createButton("复制命令：xcode-select --install", () => copyText("xcode-select --install"), "secondary"));
