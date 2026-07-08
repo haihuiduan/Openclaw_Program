@@ -12,6 +12,8 @@ const appStage = document.querySelector("#appStage");
 const wizardTitle = document.querySelector("#wizardTitle");
 const wizardDescription = wizardTitle && wizardTitle.nextElementSibling;
 const aboutMenu = document.querySelector("#aboutMenu");
+const sidebarMiniStatus = document.querySelector(".sidebar-mini-status span");
+const sidebarMiniVersion = document.querySelector(".sidebar-mini-status strong");
 const appearanceButton = document.querySelector("#appearanceButton");
 const appearanceMenu = document.querySelector("#appearanceMenu");
 const appearanceModeLabel = document.querySelector("#appearanceModeLabel");
@@ -514,11 +516,7 @@ function renderTroubleshootPage() {
 
   const actions = document.createElement("div");
   actions.className = "toolbox-page-grid";
-  actions.appendChild(createActionCard("常用修复操作", "重新检查基础环境、配置和更新状态。", [
-    ["重新检查环境", rerunEnvironmentCheck, "primary"],
-    ["检查配置", runStatusCheck, "secondary"],
-    ["检查更新", checkUpdateFromAbout, "secondary"]
-  ]));
+  actions.appendChild(createTroubleshootCommonActionsCard());
   actions.appendChild(createActionCard("控制台维护", "控制 OpenClaw 控制台的启动和停止。", [
     ["启动控制台", openDashboard, "primary"],
     ["停止控制台", stopDashboard, "secondary"]
@@ -594,6 +592,44 @@ function createActionCard(titleText, descriptionText, actions, appendExtra) {
 
   card.appendChild(actionRow);
   return card;
+}
+
+function createTroubleshootCommonActionsCard() {
+  const card = createCard("常用修复操作", "重新检查基础环境、配置和更新状态。");
+  card.classList.add("toolbox-page-card", "toolbox-action-card");
+
+  const actionRow = document.createElement("div");
+  actionRow.className = "toolbox-card-actions";
+  actionRow.appendChild(createButton("重新检查环境", rerunEnvironmentCheck, "primary"));
+  actionRow.appendChild(createButton("检查配置", runStatusCheck, "secondary"));
+  actionRow.appendChild(createTroubleshootUpdateButton());
+  card.appendChild(actionRow);
+
+  const feedback = createUpdateCheckFeedback(wizardState.versionInfo || {});
+  if (feedback) {
+    feedback.classList.add("toolbox-update-feedback");
+    card.appendChild(feedback);
+  }
+
+  return card;
+}
+
+function createTroubleshootUpdateButton() {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "secondary-action-button toolbox-update-button";
+  button.disabled = wizardState.updateCheckStatus === "checking";
+  button.textContent = wizardState.updateCheckStatus === "checking" ? "检查中..." : "检查更新";
+
+  if (wizardState.updateCheckStatus === "checking") {
+    const spinner = document.createElement("span");
+    spinner.className = "about-update-spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    button.prepend(spinner);
+  }
+
+  button.addEventListener("click", checkUpdateFromTroubleshoot);
+  return button;
 }
 
 function getDoctorCheckLabel(pattern) {
@@ -2162,7 +2198,7 @@ function createUpdateCheckFeedback(version) {
   }
 
   if (wizardState.updateCheckStatus === "failed") {
-    return createAboutFeedback("暂时无法检查更新，不影响当前使用。", "warning");
+    return createAboutFeedback("暂时无法检查更新，不影响当前使用。", "fail");
   }
 
   return null;
@@ -2234,6 +2270,37 @@ async function checkUpdateFromAbout() {
   }
 
   renderAboutMenu();
+}
+
+async function checkUpdateFromTroubleshoot() {
+  if (wizardState.updateCheckStatus === "checking") {
+    return;
+  }
+
+  wizardState.updateCheckStatus = "checking";
+  wizardState.updateNoticeDismissed = false;
+  updateLastAction("正在检查更新");
+  renderWizard();
+
+  try {
+    const version = await refreshVersionInfo({ renderHome: false });
+
+    if (!version || !version.canCheckLatest) {
+      wizardState.updateCheckStatus = "failed";
+      updateLastAction("检查更新失败");
+    } else {
+      wizardState.updateCheckStatus = version.updateAvailable ? "available" : "latest";
+      updateLastAction("检查更新完成");
+    }
+  } catch (error) {
+    wizardState.updateCheckStatus = "failed";
+    updateLastAction("检查更新失败");
+  }
+
+  renderAboutMenu();
+  if (wizardState.currentPage === "troubleshoot") {
+    renderWizard();
+  }
 }
 
 function appendVersionInfo(card) {
@@ -2655,6 +2722,42 @@ function updateSidebarState() {
     button.disabled = wizardState.isBusy || wizardState.isProbingStartup;
     button.classList.toggle("active", button.dataset.page === wizardState.currentPage);
   }
+
+  updateSidebarMiniStatus();
+}
+
+function updateSidebarMiniStatus() {
+  if (sidebarMiniStatus) {
+    sidebarMiniStatus.textContent = getSidebarMiniStatusLabel();
+  }
+
+  if (sidebarMiniVersion) {
+    sidebarMiniVersion.textContent = "v1.0.0";
+  }
+}
+
+function getSidebarMiniStatusLabel() {
+  if (wizardState.isBusy || wizardState.isProbingStartup) {
+    return "检测中";
+  }
+
+  if (wizardState.environmentStatus === "需要处理" || wizardState.installStatus === "安装异常" || wizardState.configStatus === "配置异常" || wizardState.dashboardStatus === "failed") {
+    return "需要处理";
+  }
+
+  if (wizardState.installStatus !== "已安装") {
+    return "待准备";
+  }
+
+  if (wizardState.configStatus !== "已配置" || wizardState.verifyStatus !== "通过") {
+    return "待配置";
+  }
+
+  if (wizardState.dashboardStatus === "opened") {
+    return "控制台运行中";
+  }
+
+  return "工具箱正常";
 }
 
 async function probeStartupState() {

@@ -2192,3 +2192,40 @@ body[data-theme="dark"] .first-run-action-panel p,
 body[data-theme="dark"] .first-run-helper {
   color: rgba(255, 255, 255, 0.60);
 }
+
+/* Troubleshooting update feedback mirrors the about drawer without opening it. */
+.toolbox-update-feedback {
+  margin-top: 12px;
+}
+
+.toolbox-update-button:disabled {
+  cursor: progress;
+  opacity: 0.72;
+}
+
+.about-menu-feedback.error,
+.about-menu-feedback.fail {
+  border-color: #e7b8b8;
+  background: #fff1f1;
+  color: #9f2f2f;
+}
+
+.sidebar-mini-status span {
+  color: #8c8275;
+  font-weight: 700;
+}
+
+body[data-theme="dark"] .about-menu-feedback.error,
+body[data-theme="dark"] .about-menu-feedback.fail {
+  border-color: rgba(217, 130, 130, 0.35);
+  background: rgba(217, 130, 130, 0.12);
+  color: #d98282;
+}
+
+body[data-theme="dark"] .sidebar-mini-status span {
+  color: rgba(255, 255, 255, 0.60);
+}
+
+body[data-theme="dark"] .sidebar-mini-status strong {
+  color: rgba(255, 255, 255, 0.72);
+}
