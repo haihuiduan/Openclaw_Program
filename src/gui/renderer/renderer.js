@@ -1021,7 +1021,7 @@ function formatProviderLabel(provider) {
     openai: "OpenAI",
     deepseek: "DeepSeek",
     gemini: "Gemini",
-    qwen: "Qwen"
+    qwen: "Qwen / 通义千问"
   };
   const key = String(provider || "").toLowerCase();
   return map[key] || provider || "未知";
@@ -1533,7 +1533,7 @@ function createQuickConfigureForm() {
       ["deepseek", "DeepSeek"],
       ["openai", "OpenAI"],
       ["gemini", "Gemini"],
-      ["qwen", "Qwen"]
+      ["qwen", "Qwen / 通义千问"]
     ]),
     createInputField("API Key", "apiKey", "password", getProviderPlaceholder("openrouter"), "API Key 是必填项。它用于连接你选择的 AI 服务商，本工具不会保存或记录它。"),
     createModelSelectField("模型", "modelChoice", "openrouter"),
@@ -1601,7 +1601,7 @@ function getProviderPlaceholder(provider) {
     deepseek: "请粘贴 DeepSeek API Key",
     openai: "请粘贴 OpenAI API Key",
     gemini: "请粘贴 Gemini API Key",
-    qwen: "请粘贴 Qwen API Key"
+    qwen: "请粘贴 Qwen / 通义千问 API Key"
   };
 
   return placeholders[provider] || "请粘贴服务商 API Key";
@@ -1613,7 +1613,7 @@ function getProviderLabel(provider) {
     deepseek: "DeepSeek",
     openai: "OpenAI",
     gemini: "Gemini",
-    qwen: "Qwen"
+    qwen: "Qwen / 通义千问"
   };
 
   return labels[provider] || provider;
