@@ -778,18 +778,12 @@ function renderToolboxHome() {
   renderHomeDashboard({
     state: "ready",
     title: "OpenClaw 已准备好",
-    description: "你可以启动控制台开始使用 OpenClaw，也可以更换 API Key 或查看问题排查。",
+    description: "你可以在控制台中使用 OpenClaw，也可以更换 API Key 或查看问题排查。",
     tags: [
       ["OpenClaw", "已安装", "pass"],
       ["API Key", "已配置", "pass"],
       ["控制台", getConsoleStatusLabel(), wizardState.dashboardStatus === "opened" ? "pass" : "neutral"],
       ["当前模型", getConfiguredModelLabel(), "neutral"]
-    ],
-    primaryLabel: "启动控制台",
-    primaryHandler: openDashboard,
-    heroActions: [
-      ["停止控制台", stopDashboard],
-      ["刷新状态", runStatusCheck]
     ]
   });
 }
@@ -820,15 +814,20 @@ function renderHomeDashboard(options) {
 
   content.append(title, description, tags);
 
-  const actions = document.createElement("div");
-  actions.className = "home-hero-actions";
-  actions.appendChild(createButton(options.primaryLabel, options.primaryHandler, "primary"));
+  if (options.primaryLabel) {
+    const actions = document.createElement("div");
+    actions.className = "home-hero-actions";
+    actions.appendChild(createButton(options.primaryLabel, options.primaryHandler, "primary"));
 
-  for (const [label, handler] of options.heroActions || []) {
-    actions.appendChild(createButton(label, handler, "secondary"));
+    for (const [label, handler] of options.heroActions || []) {
+      actions.appendChild(createButton(label, handler, "secondary"));
+    }
+
+    hero.append(content, actions);
+  } else {
+    hero.appendChild(content);
   }
 
-  hero.append(content, actions);
   dashboard.appendChild(hero);
   dashboard.appendChild(createHomeCardGrid(options.state));
   dashboard.appendChild(createHomeRecentCard());
@@ -844,7 +843,7 @@ function createHomeTag(label, value, state) {
 
 function createHomeCardGrid(homeState) {
   const grid = document.createElement("div");
-  grid.className = "home-dashboard-grid";
+  grid.className = "home-dashboard-grid home-dashboard-grid-" + homeState;
 
   grid.appendChild(createDashboardCard({
     title: "OpenClaw",
@@ -854,12 +853,26 @@ function createHomeCardGrid(homeState) {
     state: homeState === "new-user" ? "neutral" : "pass"
   }));
 
-  grid.appendChild(createDashboardCard({
-    title: "控制台状态",
-    status: getConsoleStatusLabel(),
-    detail: getConsoleCardDetail(),
-    state: getConsoleCardState()
-  }));
+  grid.appendChild(homeState === "ready"
+    ? createConsoleDashboardCard()
+    : createDashboardCard({
+      title: "控制台状态",
+      status: getConsoleStatusLabel(),
+      detail: getConsoleCardDetail(),
+      state: getConsoleCardState()
+    }));
+
+  if (homeState === "ready") {
+    grid.appendChild(createAiConfigurationCard());
+    grid.appendChild(createDashboardCard({
+      title: "安全须知",
+      status: "本地安全",
+      detail: "本工具不会保存、展示或记录你的 API Key。",
+      meta: "配置过程调用 OpenClaw 官方命令完成",
+      state: "neutral"
+    }));
+    return grid;
+  }
 
   grid.appendChild(createDashboardCard({
     title: "API Key",
@@ -898,6 +911,55 @@ function createHomeCardGrid(homeState) {
   return grid;
 }
 
+function createConsoleDashboardCard() {
+  const pending = wizardState.dashboardStatus === "starting" || wizardState.dashboardStatus === "stopping";
+  const isRunning = wizardState.dashboardStatus === "opened";
+  let actionLabel = isRunning ? "停止控制台" : "启动控制台";
+  let actionHandler = isRunning ? stopDashboard : openDashboard;
+
+  if (wizardState.dashboardStatus === "starting") {
+    actionLabel = "启动中...";
+    actionHandler = null;
+  } else if (wizardState.dashboardStatus === "stopping") {
+    actionLabel = "停止中...";
+    actionHandler = null;
+  }
+
+  return createDashboardCard({
+    title: "控制台状态",
+    status: getConsoleStatusLabel(),
+    detail: getConsoleCardDetail(),
+    state: getConsoleCardState(),
+    buttons: [
+      {
+        label: actionLabel,
+        handler: actionHandler,
+        kind: isRunning || wizardState.dashboardStatus === "stopping" ? "danger" : "primary",
+        pending
+      },
+      {
+        label: "刷新状态",
+        handler: runStatusCheck,
+        kind: "secondary"
+      }
+    ]
+  });
+}
+
+function createAiConfigurationCard() {
+  return createDashboardCard({
+    title: "AI 配置",
+    status: "API Key 已配置",
+    detail: "服务商：" + getHomeProviderLabel("ready"),
+    meta: "当前模型：" + getConfiguredModelLabel(),
+    state: "pass",
+    actions: [
+      ["更换 API Key", () => navigateToPage("configure", { mode: "reconfigure" })],
+      ["检查配置", runStatusCheck]
+    ]
+  });
+}
+
 function createDashboardCard(options) {
   const card = document.createElement("section");
   card.className = "dashboard-card dashboard-card-" + (options.state || "neutral");
@@ -932,6 +994,33 @@ function createDashboardCard(options) {
     card.appendChild(actions);
   }
 
+  if (options.buttons) {
+    const buttons = document.createElement("div");
+    buttons.className = "dashboard-card-buttons";
+
+    for (const action of options.buttons) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "dashboard-card-button dashboard-card-button-" + (action.kind || "secondary");
+      button.disabled = Boolean(action.pending);
+
+      if (action.pending) {
+        const spinner = document.createElement("span");
+        spinner.className = "about-update-spinner";
+        spinner.setAttribute("aria-hidden", "true");
+        button.appendChild(spinner);
+      }
+
+      button.appendChild(document.createTextNode(action.label));
+      if (action.handler) {
+        button.addEventListener("click", action.handler);
+      }
+      buttons.appendChild(button);
+    }
+
+    card.appendChild(buttons);
+  }
+
   return card;
 }
 
@@ -948,19 +1037,19 @@ function createHomeRecentCard() {
   header.appendChild(title);
   card.appendChild(header);
 
-  const list = document.createElement("div");
+  const list = document.createElement("ol");
   list.className = "home-recent-list";
 
-  const recentActions = getEffectiveRecentActions(3);
+  const recentActions = getEffectiveRecentActions(5);
 
   if (!recentActions.length) {
-    const empty = document.createElement("span");
+    const empty = document.createElement("li");
     empty.className = "home-recent-empty";
     empty.textContent = "暂无最近操作";
     list.appendChild(empty);
   } else {
     for (const action of recentActions) {
-      const item = document.createElement("span");
+      const item = document.createElement("li");
       item.className = "home-recent-item";
       item.textContent = action;
       list.appendChild(item);
@@ -1856,17 +1945,28 @@ function renderVerifyFailureResult(extraMessage) {
 }
 
 async function renderPrepareFailure(result) {
-  const doctorReport = await readDoctorReportSafely();
-  const card = createCard("准备 OpenClaw 失败", "OpenClaw 官方安装器没有完成安装。你可以重试，或者进入问题排查查看网络、权限和基础组件建议。");
+  const card = createCard(
+    "准备 OpenClaw 失败",
+    "OpenClaw 官方安装器没有完成安装。请先检查网络连接，然后重试。如果仍然失败，可以进入问题排查查看详细诊断。"
+  );
 
-  if (doctorReport && Array.isArray(doctorReport.checks)) {
-    for (const check of doctorReport.checks.filter((item) => item.level === "fail")) {
-      card.appendChild(createCheckCard(check));
-    }
-    appendDependencyRepairSuggestions(card, doctorReport.checks);
-  } else {
-    card.appendChild(createNotice(result.finalMessage || result.error || "请查看准备结果或打开问题排查。", "fail"));
+  if (isNetworkInstallFailure(result)) {
+    card.appendChild(createNotice("可能是网络连接或下载失败。请确认网络可用后重试。", "warning"));
   }
+
+  const guidance = document.createElement("div");
+  guidance.className = "configure-guide-note";
+  guidance.appendChild(createPrepareFailureSection("可能原因", [
+    "网络连接不可用，或无法访问 OpenClaw 官方安装源",
+    "官方安装器下载失败",
+    "系统权限或运行环境异常"
+  ]));
+  guidance.appendChild(createPrepareFailureSection("建议操作", [
+    "确认网络连接正常",
+    "重新点击“重试准备 OpenClaw”",
+    "如果多次失败，再打开问题排查或查看基础组件建议"
+  ]));
+  card.appendChild(guidance);
 
   wizardCard.replaceChildren();
   wizardActions.replaceChildren();
@@ -1874,6 +1974,55 @@ async function renderPrepareFailure(result) {
   addAction("重试准备 OpenClaw", runInstallStep, "primary");
   addAction("打开问题排查", () => navigateToPage("troubleshoot"), "secondary");
   addAction("查看基础组件建议", renderDependencyPreparationPage, "secondary");
+}
+
+function createPrepareFailureSection(title, items) {
+  const section = document.createElement("div");
+  section.className = "configure-guide-note-section";
+
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  section.appendChild(heading);
+
+  for (const item of items) {
+    const row = document.createElement("p");
+    row.textContent = "• " + item;
+    section.appendChild(row);
+  }
+
+  return section;
+}
+
+function isNetworkInstallFailure(result) {
+  const details = [
+    result && result.finalMessage,
+    result && result.error,
+    ...((result && Array.isArray(result.steps)) ? result.steps.flatMap((step) => [
+      step && step.message,
+      step && step.error,
+      step && step.finalMessage
+    ]) : [])
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return [
+    "network",
+    "timeout",
+    "enotfound",
+    "econnreset",
+    "econnrefused",
+    "fetch failed",
+    "curl",
+    "could not resolve",
+    "unable to download",
+    "download failed",
+    "install.sh 下载失败",
+    "下载官方 install.sh 失败",
+    "无法下载官方安装脚本",
+    "下载失败"
+  ].some((keyword) => details.includes(keyword));
 }
 
 function renderDependencyPreparationPage() {
@@ -1887,39 +2036,6 @@ function renderDependencyPreparationPage() {
   addAction("打开 Node.js 官方下载页", () => openExternalUrl("https://nodejs.org/zh-cn/download"), "secondary");
   addAction("准备 Git / Command Line Tools", () => copyText("xcode-select --install"), "secondary");
   addAction("重新检查环境", runDoctorStep, "secondary");
-}
-
-async function readDoctorReportSafely() {
-  try {
-    return await window.openClawInstaller.runDoctor();
-  } catch (error) {
-    return null;
-  }
-}
-
-function appendDependencyRepairSuggestions(card, checks) {
-  const failedText = checks
-    .filter((check) => check.level === "fail")
-    .map((check) => String(check.name || "") + " " + String(check.message || ""))
-    .join(" ")
-    .toLowerCase();
-
-  if (failedText.includes("node") || failedText.includes("npm")) {
-    card.appendChild(createNotice("OpenClaw 官方安装器通常会自动处理 Node.js / npm。若仍然失败，可以在这里查看状态并手动准备。", "warning"));
-    const actions = document.createElement("div");
-    actions.className = "configure-guide-actions";
-    actions.appendChild(createButton("打开 Node.js 下载页面", () => openExternalUrl("https://nodejs.org/zh-cn/download"), "secondary"));
-    actions.appendChild(createButton("复制安装说明", () => copyText("请访问 https://nodejs.org/zh-cn/download 下载并安装 Node.js LTS"), "secondary"));
-    card.appendChild(actions);
-  }
-
-  if (failedText.includes("git")) {
-    card.appendChild(createNotice("OpenClaw 安装过程可能会用到 Git 或相关开发者工具。若仍然失败，可尝试安装 Command Line Tools。", "warning"));
-    const actions = document.createElement("div");
-    actions.className = "configure-guide-actions";
-    actions.appendChild(createButton("复制命令：xcode-select --install", () => copyText("xcode-select --install"), "secondary"));
-    card.appendChild(actions);
-  }
 }
 
 async function openExternalUrl(url) {

@@ -1463,6 +1463,14 @@ h1 {
   gap: 12px;
 }
 
+.home-dashboard-ready .home-hero {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.home-dashboard-grid-ready {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .dashboard-card {
   min-height: 156px;
   border: 1px solid var(--panel-border);
@@ -1545,6 +1553,59 @@ h1 {
   text-decoration: none;
 }
 
+.dashboard-card-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.dashboard-card-button {
+  min-height: 40px;
+  border: 1px solid #cfd6df;
+  border-radius: 8px;
+  padding: 0 14px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.dashboard-card-button-primary {
+  border-color: #6f8fcf;
+  background: #6f8fcf;
+  color: #ffffff;
+}
+
+.dashboard-card-button-primary:hover {
+  border-color: #5f7fbe;
+  background: #5f7fbe;
+}
+
+.dashboard-card-button-danger {
+  border-color: #d6a09a;
+  background: #f7e7e4;
+  color: #9c463f;
+}
+
+.dashboard-card-button-danger:hover {
+  border-color: #c98c85;
+  background: #f2d9d5;
+}
+
+.dashboard-card-button-secondary {
+  color: #5d6674;
+  background: #ffffff;
+}
+
+.dashboard-card-button-secondary:hover {
+  border-color: #aeb8c6;
+  background: #f5f7fa;
+}
+
+.dashboard-card-button:disabled {
+  cursor: progress;
+  opacity: 0.68;
+}
+
 
 .home-recent-card {
   display: grid;
@@ -1568,19 +1629,27 @@ h1 {
 }
 
 .home-recent-list {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 8px;
+  margin: 0;
+  padding-left: 24px;
 }
 
 .home-recent-item,
 .home-recent-empty {
-  border: 1px solid #ebe3d8;
-  border-radius: 999px;
-  padding: 6px 9px;
-  background: #fffdf8;
+  padding: 4px 2px;
   color: #6e665d;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.home-recent-item::marker {
+  color: #8d8273;
+  font-weight: 800;
+}
+
+.home-recent-empty {
+  list-style: none;
 }
 
 .configure-guide-card.home-status-card {
@@ -1952,6 +2021,44 @@ body[data-theme="dark"] .dashboard-card-actions .link-button:hover {
   border-color: rgba(142, 167, 232, 0.42);
   background: rgba(142, 167, 232, 0.14);
   color: rgba(255, 255, 255, 0.87);
+}
+
+body[data-theme="dark"] .dashboard-card-button-primary {
+  border-color: #8ea7e8;
+  background: #8ea7e8;
+  color: #111318;
+}
+
+body[data-theme="dark"] .dashboard-card-button-primary:hover {
+  border-color: #9badeb;
+  background: #9badeb;
+}
+
+body[data-theme="dark"] .dashboard-card-button-danger {
+  border-color: rgba(217, 130, 130, 0.42);
+  background: rgba(217, 130, 130, 0.14);
+  color: #e08a8a;
+}
+
+body[data-theme="dark"] .dashboard-card-button-danger:hover {
+  border-color: rgba(224, 138, 138, 0.58);
+  background: rgba(217, 130, 130, 0.20);
+}
+
+body[data-theme="dark"] .dashboard-card-button-secondary {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.78);
+}
+
+body[data-theme="dark"] .dashboard-card-button-secondary:hover {
+  border-color: rgba(142, 167, 232, 0.42);
+  background: rgba(142, 167, 232, 0.14);
+  color: rgba(255, 255, 255, 0.87);
+}
+
+body[data-theme="dark"] .home-recent-item::marker {
+  color: rgba(255, 255, 255, 0.50);
 }
 
 body[data-theme="dark"] button:disabled {
