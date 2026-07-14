@@ -2310,6 +2310,41 @@ body[data-theme="dark"] .first-run-helper {
   opacity: 0.72;
 }
 
+.troubleshoot-diagnostics-button {
+  min-width: 112px;
+  justify-content: center;
+}
+
+.troubleshoot-diagnostics-button:disabled {
+  cursor: progress;
+  opacity: 0.78;
+}
+
+.troubleshoot-diagnostics-feedback {
+  margin-top: 12px;
+}
+
+.diagnostics-spinner {
+  flex: 0 0 auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .about-update-spinner,
+  .diagnostics-spinner {
+    animation: none;
+    border-top-color: rgba(70, 85, 106, 0.25);
+  }
+}
+
+body[data-theme="dark"] .diagnostics-spinner {
+  border-color: rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.62);
+}
+
+body[data-theme="dark"] .troubleshoot-diagnostics-button:disabled {
+  opacity: 0.76;
+}
+
 .about-menu-feedback.error,
 .about-menu-feedback.fail {
   border-color: #e7b8b8;

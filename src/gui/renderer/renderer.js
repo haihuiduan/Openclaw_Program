@@ -56,13 +56,16 @@ const wizardState = {
   updateCheckStatus: "idle",
   toolboxNotice: null,
   toolboxDoctorReport: null,
+  troubleshootDiagnosticsBusy: false,
+  troubleshootDiagnosticsStatus: "idle",
+  troubleshootDiagnosticsMessage: "",
   appearanceMode: "system"
 };
 
 setupCompactStatusBar();
 applyAppearanceMode();
 
-if (window.openClawInstaller) {
+if (window.openClawInstaller && appStage) {
   appStage.textContent = window.openClawInstaller.stage;
 }
 
@@ -537,12 +540,6 @@ function renderTroubleshootPage() {
     ["控制台状态", getConsoleStatusLabel()]
   ]));
 
-  page.appendChild(createInfoCard("基础组件诊断说明", [
-    ["Node.js", "官方安装器通常会自动处理；若安装失败，可在这里查看状态。"],
-    ["npm", "通常随 Node.js 一起安装；若安装失败，可在这里查看状态。"],
-    ["Git", "安装过程可能会用到 Git 或相关开发者工具；若安装失败，可尝试安装 Command Line Tools。"]
-  ]));
-
   const technical = document.createElement("details");
   technical.className = "toolbox-technical-card";
   const summary = document.createElement("summary");
@@ -595,15 +592,19 @@ function createActionCard(titleText, descriptionText, actions, appendExtra) {
 }
 
 function createTroubleshootCommonActionsCard() {
-  const card = createCard("常用修复操作", "重新检查基础环境、配置和更新状态。");
+  const card = createCard("常用修复操作", "运行诊断并检查 OpenClaw 更新状态。");
   card.classList.add("toolbox-page-card", "toolbox-action-card");
 
   const actionRow = document.createElement("div");
   actionRow.className = "toolbox-card-actions";
-  actionRow.appendChild(createButton("重新检查环境", rerunEnvironmentCheck, "primary"));
-  actionRow.appendChild(createButton("检查配置", runStatusCheck, "secondary"));
+  actionRow.appendChild(createTroubleshootDiagnosticsButton());
   actionRow.appendChild(createTroubleshootUpdateButton());
   card.appendChild(actionRow);
+
+  const diagnosticFeedback = createTroubleshootDiagnosticsFeedback();
+  if (diagnosticFeedback) {
+    card.appendChild(diagnosticFeedback);
+  }
 
   const feedback = createUpdateCheckFeedback(wizardState.versionInfo || {});
   if (feedback) {
@@ -612,6 +613,68 @@ function createTroubleshootCommonActionsCard() {
   }
 
   return card;
+}
+
+function createTroubleshootDiagnosticsButton() {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "inline-action-button troubleshoot-diagnostics-button";
+  button.disabled = wizardState.troubleshootDiagnosticsBusy;
+  button.setAttribute("aria-busy", wizardState.troubleshootDiagnosticsBusy ? "true" : "false");
+  button.setAttribute("aria-label", wizardState.troubleshootDiagnosticsBusy ? "正在诊断" : "运行诊断");
+
+  if (wizardState.troubleshootDiagnosticsBusy) {
+    const spinner = document.createElement("span");
+    spinner.className = "about-update-spinner diagnostics-spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    button.appendChild(spinner);
+  }
+
+  button.appendChild(document.createTextNode(wizardState.troubleshootDiagnosticsBusy ? "正在诊断…" : "运行诊断"));
+  button.addEventListener("click", runTroubleshootDiagnostics);
+  return button;
+}
+
+function createTroubleshootDiagnosticsFeedback() {
+  if (!wizardState.troubleshootDiagnosticsMessage) {
+    return null;
+  }
+
+  const notice = createNotice(wizardState.troubleshootDiagnosticsMessage, getTroubleshootDiagnosticsNoticeState());
+  notice.classList.add("troubleshoot-diagnostics-feedback");
+  return notice;
+}
+
+function getTroubleshootDiagnosticsNoticeState() {
+  if (wizardState.troubleshootDiagnosticsStatus === "running") {
+    return "info";
+  }
+
+  if (wizardState.troubleshootDiagnosticsStatus === "success") {
+    return "pass";
+  }
+
+  if (wizardState.troubleshootDiagnosticsStatus === "failure") {
+    return "fail";
+  }
+
+  if (wizardState.troubleshootDiagnosticsStatus === "warning") {
+    return "warning";
+  }
+
+  return "info";
+}
+
+function getTroubleshootDiagnosticsDoneMessage(report) {
+  const checks = report && Array.isArray(report.checks) ? report.checks : [];
+  const needsAttention = !report || report.ok === false || checks.some((check) => check.level === "warning" || check.level === "fail");
+  return needsAttention ? "诊断完成，发现需要确认的项目。" : "诊断完成，未发现需要处理的问题。";
+}
+
+function getTroubleshootDiagnosticsDoneStatus(report) {
+  const checks = report && Array.isArray(report.checks) ? report.checks : [];
+  const needsAttention = !report || report.ok === false || checks.some((check) => check.level === "warning" || check.level === "fail");
+  return needsAttention ? "warning" : "success";
 }
 
 function createTroubleshootUpdateButton() {
@@ -1313,8 +1376,9 @@ async function runQuickConfigure(form) {
   const modelChoice = String(form.elements.modelChoice.value || "auto");
   const defaultModel = resolveSelectedModel(form);
 
-  if (!apiKey) {
-    showApiKeyError(form);
+  const apiKeyValidation = validateApiKey(apiKey, provider);
+  if (!apiKeyValidation.ok) {
+    showApiKeyError(form, apiKeyValidation.message);
     return;
   }
 
@@ -1818,9 +1882,48 @@ function updateCustomModelVisibility(form) {
   }
 }
 
-function showApiKeyError(form) {
+function validateApiKey(value, provider) {
+  const rawValue = String(value || "");
+  const trimmed = rawValue.trim();
+
+  if (!trimmed) {
+    return { ok: false, message: "请先填写 API Key，否则无法完成配置。" };
+  }
+
+  if (/[\r\n]/.test(rawValue)) {
+    return { ok: false, message: "API Key 不能包含换行，请检查后重新填写。" };
+  }
+
+  if (/\s/.test(trimmed)) {
+    return { ok: false, message: "API Key 不能包含空格，请检查后重新填写。" };
+  }
+
+  if (/^\d+$/.test(trimmed)) {
+    return { ok: false, message: "API Key 不能只包含数字，请检查后重新填写。" };
+  }
+
+  if (trimmed.length < getMinimumApiKeyLength(provider)) {
+    return { ok: false, message: "API Key 长度过短，请确认填写的是完整密钥。" };
+  }
+
+  return { ok: true, message: "" };
+}
+
+function getMinimumApiKeyLength(provider) {
+  const minimumLengths = {
+    openrouter: 16,
+    deepseek: 16,
+    openai: 16,
+    gemini: 16,
+    qwen: 16
+  };
+
+  return minimumLengths[provider] || 12;
+}
+
+function showApiKeyError(form, message) {
   const apiKeyField = form.elements.apiKey.closest(".quick-config-field");
-  showFieldError(apiKeyField, "请先填写 API Key，否则无法完成配置。");
+  showFieldError(apiKeyField, message || "请先填写 API Key，否则无法完成配置。");
   form.elements.apiKey.focus();
 }
 
@@ -2541,11 +2644,45 @@ async function rerunEnvironmentCheck() {
   return runDoctorStep();
 }
 
-async function runToolboxDoctorCheck() {
-  setBusy(true);
-  wizardState.toolboxNotice = { message: "正在重新检查环境…", state: "info" };
-  wizardState.toolboxDoctorReport = null;
-  updateLastAction("重新检查环境");
+async function runTroubleshootDiagnostics() {
+  if (wizardState.troubleshootDiagnosticsBusy) {
+    return null;
+  }
+
+  wizardState.currentPage = "troubleshoot";
+  wizardState.currentStep = 0;
+  return runToolboxDoctorCheck({
+    runningMessage: "正在检查 OpenClaw、网络和运行环境…",
+    lastAction: "运行诊断",
+    lockUi: false,
+    preserveDoctorReport: true,
+    diagnosticsMode: true
+  });
+}
+
+async function runToolboxDoctorCheck(options = {}) {
+  const shouldLockUi = options.lockUi !== false;
+  const diagnosticsMode = options.diagnosticsMode === true;
+
+  if (diagnosticsMode && wizardState.troubleshootDiagnosticsBusy) {
+    return null;
+  }
+
+  if (shouldLockUi) {
+    setBusy(true);
+  }
+
+  if (diagnosticsMode) {
+    wizardState.troubleshootDiagnosticsBusy = true;
+    wizardState.troubleshootDiagnosticsStatus = "running";
+    wizardState.troubleshootDiagnosticsMessage = options.runningMessage || "正在检查 OpenClaw、网络和运行环境…";
+  }
+
+  wizardState.toolboxNotice = { message: options.runningMessage || "正在重新检查环境…", state: "info" };
+  if (!options.preserveDoctorReport) {
+    wizardState.toolboxDoctorReport = null;
+  }
+  updateLastAction(options.lastAction || "重新检查环境");
   renderWizard();
 
   try {
@@ -2565,11 +2702,30 @@ async function runToolboxDoctorCheck() {
       wizardState.toolboxNotice = { message: "环境需要处理，请查看下方提示。", state: "fail" };
       updateLastAction("环境需要处理");
     }
+
+    if (diagnosticsMode) {
+      wizardState.troubleshootDiagnosticsStatus = getTroubleshootDiagnosticsDoneStatus(report);
+      wizardState.troubleshootDiagnosticsMessage = getTroubleshootDiagnosticsDoneMessage(report);
+    }
+
+    return report;
   } catch (error) {
-    wizardState.toolboxNotice = { message: getErrorMessage(error), state: "fail" };
+    wizardState.toolboxNotice = { message: diagnosticsMode ? "诊断未完成，请稍后重试。" : getErrorMessage(error), state: "fail" };
+    if (diagnosticsMode) {
+      wizardState.troubleshootDiagnosticsStatus = "failure";
+      wizardState.troubleshootDiagnosticsMessage = "诊断未完成，请稍后重试。";
+    }
     updateLastAction("环境检查失败");
+    return null;
   } finally {
-    setBusy(false);
+    if (diagnosticsMode) {
+      wizardState.troubleshootDiagnosticsBusy = false;
+    }
+
+    if (shouldLockUi) {
+      setBusy(false);
+    }
+
     if (wizardState.currentStep === 0) {
       renderWizard();
     }
@@ -2789,7 +2945,7 @@ function handleGoHome() {
 }
 
 function navigateToPage(page, options = {}) {
-  if (wizardState.isBusy || wizardState.isProbingStartup) {
+  if (wizardState.isBusy) {
     updateLastAction("当前任务进行中");
     return;
   }
@@ -2830,12 +2986,12 @@ function updateHomeButtonState() {
     return;
   }
 
-  homeButton.disabled = wizardState.isBusy || wizardState.isProbingStartup;
+  homeButton.disabled = wizardState.isBusy;
 }
 
 function updateSidebarState() {
   for (const button of sidebarButtons) {
-    button.disabled = wizardState.isBusy || wizardState.isProbingStartup;
+    button.disabled = wizardState.isBusy;
     button.classList.toggle("active", button.dataset.page === wizardState.currentPage);
   }
 
