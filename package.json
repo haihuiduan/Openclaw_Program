@@ -17,7 +17,9 @@
     "doctor": "node bin/cli.js doctor",
     "install:openclaw": "node bin/cli.js install",
     "test": "node --test",
-    "gui": "electron src/gui/main.js"
+    "gui": "electron src/gui/main.js",
+    "pack:mac": "electron-builder --mac --dir",
+    "dist:mac": "electron-builder --mac dmg"
   },
   "keywords": [
     "openclaw",
@@ -30,6 +32,28 @@
     "node": ">=18.17"
   },
   "devDependencies": {
-    "electron": "^43.0.0"
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.haihuiduan.openclawtoolbox",
+    "productName": "OpenClaw 工具箱",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "src/gui/main.js"
+    },
+    "asar": true,
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.developer-tools"
+    }
   }
 }
