@@ -1,6 +1,7 @@
 // 系统命令封装层：项目里凡是要调用系统命令，都应该从这里走。
 // 这样可以统一处理 stdout/stderr、退出码、错误和跨平台差异。
 const { spawn } = require("node:child_process");
+const { getCommandEnv } = require("./env");
 
 /**
  * 执行一个系统命令。
@@ -12,7 +13,7 @@ function runCommand(command, args = [], options = {}) {
     // shell:false 避免把参数交给 shell 拼接，减少路径和特殊字符带来的风险。
     const child = spawn(command, args, {
       cwd: options.cwd,
-      env: options.env || process.env,
+      env: getCommandEnv(options.env || process.env),
       shell: false,
       stdio: options.stdio || "pipe"
     });
@@ -89,7 +90,7 @@ function runInteractiveCommand(command, args = [], options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: options.cwd,
-      env: options.env || process.env,
+      env: getCommandEnv(options.env || process.env),
       shell: false,
       stdio: "inherit"
     });
@@ -141,7 +142,7 @@ function runDetachedCommand(command, args = [], options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: options.cwd,
-      env: options.env || process.env,
+      env: getCommandEnv(options.env || process.env),
       shell: false,
       detached: true,
       stdio: "ignore"
@@ -190,6 +191,7 @@ async function commandExists(command) {
 
 module.exports = {
   commandExists,
+  getCommandEnv,
   runCommand,
   runDetachedCommand,
   runInteractiveCommand
