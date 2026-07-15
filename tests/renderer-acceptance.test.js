@@ -9,6 +9,10 @@ function readRenderer() {
   return fs.readFileSync(projectPath("src/gui/renderer/renderer.js"), "utf8");
 }
 
+function readFile(relativePath) {
+  return fs.readFileSync(projectPath(relativePath), "utf8");
+}
+
 function getFunctionBlock(source, functionName) {
   const start = source.indexOf(`function ${functionName}`);
   assert.notEqual(start, -1, `${functionName} should exist`);
@@ -133,6 +137,67 @@ test("输入内容修改后会清除对应表单错误", () => {
 
   assert.ok(createForm.includes('apiKeyInput.addEventListener("input", () => clearApiKeyError(form))'));
   assert.ok(createForm.includes('customModelInput.addEventListener("input", () => clearCustomModelError(form))'));
+});
+
+test("五个服务商映射到正确的官方 API Key 地址", () => {
+  const { getProviderApiKeyGuidance } = require(projectPath("src/gui/providerApiKeyGuidance.js"));
+  const expected = {
+    openrouter: "https://openrouter.ai/settings/keys",
+    deepseek: "https://platform.deepseek.com/api_keys",
+    openai: "https://platform.openai.com/api-keys",
+    gemini: "https://aistudio.google.com/app/apikey",
+    qwen: "https://help.aliyun.com/zh/model-studio/get-api-key"
+  };
+
+  for (const [providerId, url] of Object.entries(expected)) {
+    assert.equal(getProviderApiKeyGuidance(providerId).url, url);
+  }
+});
+
+test("未知 provider ID 没有链接且 renderer 不能提交任意 URL", () => {
+  const { getProviderApiKeyGuidance } = require(projectPath("src/gui/providerApiKeyGuidance.js"));
+  const preload = readFile("src/gui/preload.js");
+  const main = readFile("src/gui/main.js");
+
+  assert.equal(getProviderApiKeyGuidance("unknown"), null);
+  assert.match(preload, /openProviderApiKeyPage\(providerId\)/);
+  assert.match(preload, /invoke\("provider-api-key:open", providerId\)/);
+  assert.doesNotMatch(preload, /provider-api-key:open", url/);
+  assert.match(main, /getProviderApiKeyGuidance\(providerId\)/);
+});
+
+test("服务商切换更新提示和按钮文字", () => {
+  const createForm = getFunctionBlock(readRenderer(), "createQuickConfigureForm");
+  const updateHelp = getFunctionBlock(readRenderer(), "updateProviderApiKeyHelp");
+
+  assert.match(createForm, /updateProviderApiKeyHelp\(providerHelp, providerSelect\.value\)/);
+  assert.match(createForm, /providerSelect\.addEventListener\("change"/);
+  assert.match(updateHelp, /guidance\.hint/);
+  assert.match(updateHelp, /"打开 " \+ guidance\.label \+ " 获取 API Key"/);
+  assert.match(updateHelp, /"请先选择 AI 服务商。"/);
+});
+
+test("首次配置和重新配置复用同一个带官方引导的表单", () => {
+  const renderer = readRenderer();
+  const configurePage = getFunctionBlock(renderer, "renderStandaloneConfigurePage");
+  const createForm = getFunctionBlock(renderer, "createQuickConfigureForm");
+
+  assert.match(configurePage, /createQuickConfigureForm\(\)/);
+  assert.match(createForm, /createProviderApiKeyHelp\(\)/);
+  assert.match(createForm, /wizardState\.configureMode === "reconfigure"/);
+});
+
+test("官方页面打开失败时使用表单内反馈且不改变 API Key 校验", () => {
+  const renderer = readRenderer();
+  const openPage = getFunctionBlock(renderer, "openProviderApiKeyPage");
+  const createHelp = getFunctionBlock(renderer, "createProviderApiKeyHelp");
+  const validateApiKey = loadApiKeyValidator();
+
+  assert.match(createHelp, /provider-api-key-feedback/);
+  assert.match(openPage, /feedback\.textContent/);
+  assert.match(openPage, /feedback\.hidden = false/);
+  assert.equal(validateApiKey("short", "openai").ok, false);
+  assert.equal(validateApiKey("sk-valid-key-1234567890", "openai").ok, true);
 });
 
 test("配置命令失败时不能标记为已验证", () => {

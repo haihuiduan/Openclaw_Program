@@ -3,6 +3,7 @@ const path = require("node:path");
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const { loadConfig } = require("../config");
 const installerService = require("./services/installerService");
+const { getProviderApiKeyGuidance } = require("./providerApiKeyGuidance");
 
 let mainWindow = null;
 
@@ -104,6 +105,33 @@ ipcMain.handle("external:open", async (event, url) => {
     ok: true,
     message: "已打开外部链接。"
   };
+});
+
+ipcMain.handle("provider-api-key:open", async (event, providerId) => {
+  const guidance = getProviderApiKeyGuidance(providerId);
+
+  if (!guidance || !guidance.url.startsWith("https://")) {
+    return {
+      success: false,
+      ok: false,
+      message: "不支持该 AI 服务商，未打开任何链接。"
+    };
+  }
+
+  try {
+    await shell.openExternal(guidance.url);
+    return {
+      success: true,
+      ok: true,
+      message: "已在默认浏览器中打开官方 API Key 页面。"
+    };
+  } catch (error) {
+    return {
+      success: false,
+      ok: false,
+      message: "暂时无法打开官方页面，请稍后重试。"
+    };
+  }
 });
 
 ipcMain.handle("logs:open", async () => {

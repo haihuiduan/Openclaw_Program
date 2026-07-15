@@ -49,6 +49,9 @@ contextBridge.exposeInMainWorld("openClawInstaller", {
   openExternal(url) {
     return ipcRenderer.invoke("external:open", url);
   },
+  openProviderApiKeyPage(providerId) {
+    return ipcRenderer.invoke("provider-api-key:open", providerId);
+  },
   onInstallProgress(callback) {
     return subscribeToProgress("install:progress", callback);
   },

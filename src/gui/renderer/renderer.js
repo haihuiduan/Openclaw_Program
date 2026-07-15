@@ -1725,6 +1725,7 @@ function createQuickConfigureForm() {
       ["qwen", "Qwen / 通义千问"]
     ]),
     createInputField("API Key", "apiKey", "password", getProviderPlaceholder("openrouter"), "API Key 是必填项。它用于连接你选择的 AI 服务商，本工具不会保存或记录它。"),
+    createProviderApiKeyHelp(),
     createModelSelectField("模型", "modelChoice", "openrouter"),
     createInputField("自定义模型名称", "customModel", "text", "例如 provider/model-name"),
     createParagraph("首次使用建议选择自动推荐模型。"),
@@ -1734,6 +1735,8 @@ function createQuickConfigureForm() {
   const modelSelect = form.elements.modelChoice;
   const apiKeyInput = form.elements.apiKey;
   const customModelInput = form.elements.customModel;
+  const providerHelp = form.querySelector(".provider-api-key-help");
+  updateProviderApiKeyHelp(providerHelp, providerSelect.value);
   updateCustomModelVisibility(form);
   providerSelect.addEventListener("change", () => {
     apiKeyInput.placeholder = getProviderPlaceholder(providerSelect.value);
@@ -1742,6 +1745,7 @@ function createQuickConfigureForm() {
     customModelInput.value = "";
     clearCustomModelError(form);
     updateCustomModelVisibility(form);
+    updateProviderApiKeyHelp(providerHelp, providerSelect.value);
   });
   modelSelect.addEventListener("change", () => {
     if (modelSelect.value !== "custom") {
@@ -1767,6 +1771,68 @@ function createQuickConfigureForm() {
   });
 
   return form;
+}
+
+function createProviderApiKeyHelp() {
+  const help = document.createElement("div");
+  help.className = "provider-api-key-help";
+
+  const hint = document.createElement("p");
+  hint.className = "provider-api-key-hint";
+
+  const button = createButton("获取 API Key", async () => {
+    await openProviderApiKeyPage(help);
+  }, "secondary");
+  button.classList.add("provider-api-key-button");
+
+  const common = document.createElement("p");
+  common.className = "provider-api-key-common";
+  common.textContent = "API Key 需要前往所选服务商的官方平台创建。会员订阅通常不等于 API 调用额度。";
+
+  const feedback = document.createElement("p");
+  feedback.className = "provider-api-key-feedback";
+  feedback.setAttribute("role", "status");
+  feedback.setAttribute("aria-live", "polite");
+  feedback.hidden = true;
+
+  help.append(hint, button, common, feedback);
+  return help;
+}
+
+function updateProviderApiKeyHelp(help, providerId) {
+  const guidance = window.openClawProviderApiKeyGuidance.getProviderApiKeyGuidance(providerId);
+  const hint = help.querySelector(".provider-api-key-hint");
+  const button = help.querySelector(".provider-api-key-button");
+  const feedback = help.querySelector(".provider-api-key-feedback");
+
+  feedback.hidden = true;
+  feedback.textContent = "";
+  help.dataset.providerId = guidance ? providerId : "";
+  hint.textContent = guidance ? guidance.hint : "请先选择 AI 服务商。";
+  button.textContent = guidance ? "打开 " + guidance.label + " 获取 API Key" : "获取 API Key";
+  button.disabled = !guidance;
+}
+
+async function openProviderApiKeyPage(help) {
+  const providerId = help.dataset.providerId;
+  const feedback = help.querySelector(".provider-api-key-feedback");
+
+  if (!providerId) {
+    feedback.textContent = "请先选择 AI 服务商。";
+    feedback.hidden = false;
+    return;
+  }
+
+  try {
+    const result = await window.openClawInstaller.openProviderApiKeyPage(providerId);
+    if (!result || !result.ok) {
+      feedback.textContent = result && result.message ? result.message : "暂时无法打开官方页面，请稍后重试。";
+      feedback.hidden = false;
+    }
+  } catch (error) {
+    feedback.textContent = "暂时无法打开官方页面，请稍后重试。";
+    feedback.hidden = false;
+  }
 }
 
 function resolveSelectedModel(form) {

@@ -1798,6 +1798,43 @@ body.is-home-dashboard .app-main {
   margin-top: 16px;
 }
 
+.provider-api-key-help {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin: -2px 0 14px;
+  border-left: 3px solid #cfd6df;
+  padding: 10px 12px;
+  color: var(--panel-muted);
+  background: rgba(248, 250, 252, 0.72);
+}
+
+.provider-api-key-hint,
+.provider-api-key-common,
+.provider-api-key-feedback {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.provider-api-key-common {
+  color: #697386;
+}
+
+.provider-api-key-feedback {
+  color: #a72525;
+  font-weight: 700;
+}
+
+.provider-api-key-feedback[hidden] {
+  display: none;
+}
+
+.provider-api-key-button:focus-visible {
+  outline: 3px solid rgba(56, 103, 214, 0.35);
+  outline-offset: 2px;
+}
+
 @media (max-width: 980px) {
   .toolbox-page-grid {
     grid-template-columns: 1fr;
@@ -2165,6 +2202,20 @@ body[data-theme="dark"] input[readonly],
 body[data-theme="dark"] textarea[readonly] {
   background: #181b20;
   color: rgba(255, 255, 255, 0.46);
+}
+
+body[data-theme="dark"] .provider-api-key-help {
+  border-left-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+body[data-theme="dark"] .provider-api-key-common {
+  color: rgba(255, 255, 255, 0.52);
+}
+
+body[data-theme="dark"] .provider-api-key-feedback {
+  color: #f0a5a5;
 }
 
 /* Dark-mode wizard step cards */
