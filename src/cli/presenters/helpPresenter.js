@@ -24,6 +24,10 @@ function printHelp() {
   openclaw-installer roles install <id> 安装角色到独立 workspace
   openclaw-installer roles list-installed 列出已安装角色
   openclaw-installer roles remove <id>  删除已安装但未启用的角色
+  openclaw-installer instances list     列出 ToolBox 管理的 Agent Instance
+  openclaw-installer instances inspect <id> 查看 Agent Instance 详情
+  openclaw-installer instances register <role-id> <agent-id> 注册 Role Agent
+  openclaw-installer instances reconcile 核对 OpenClaw 注册状态与配置漂移
   openclaw-installer help                查看帮助信息
   openclaw-installer version             查看当前安装助手版本
 

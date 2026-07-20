@@ -44,6 +44,10 @@ function loadCliWithMocks(mocks = {}) {
     mockModule("src/core/roles/installer.js", mocks.roleInstaller);
   }
 
+  if (mocks.instances) {
+    mockModule("src/core/agent-instances/manager.js", mocks.instances);
+  }
+
   return require(projectPath("src/cli/index.js"));
 }
 
@@ -377,4 +381,112 @@ test("roles CLI 发生参数错误时进程退出码为 1", () => {
 
   assert.equal(result.status, 1);
   assert.match(result.stderr, /需要提供 role id/);
+});
+
+test("help 输出包含 Phase 3 Agent Instance 命令且不宣称支持 disable", async () => {
+  const { runCli } = loadCliWithMocks();
+  const { output } = await captureConsole(() => runCli(["help"]));
+
+  assert.match(output, /openclaw-installer instances list/);
+  assert.match(output, /openclaw-installer instances inspect <id>/);
+  assert.match(output, /openclaw-installer instances register <role-id> <agent-id>/);
+  assert.match(output, /openclaw-installer instances reconcile/);
+  assert.doesNotMatch(output, /instances disable|instances delete|instances bind/);
+});
+
+test("instances list 和 inspect 分发到 Agent Instance Manager", async () => {
+  const calls = [];
+  const record = {
+    instanceId: "test-role-worker",
+    roleId: "test-role",
+    roleVersion: "1.0.0",
+    roleAgentId: "worker",
+    status: "registered",
+    workspacePath: "/tmp/workspace",
+    agentDir: "/tmp/agent-dir",
+    registeredAt: "2026-07-20T00:00:00.000Z",
+    lastReconciledAt: "2026-07-20T00:00:00.000Z",
+    drift: []
+  };
+  const { runCli } = loadCliWithMocks({
+    instances: {
+      listInstances: async () => {
+        calls.push(["list"]);
+        return [record];
+      },
+      inspectInstance: async (instanceId) => {
+        calls.push(["inspect", instanceId]);
+        return record;
+      },
+      reconcileInstances: async () => {},
+      registerInstance: async () => {}
+    }
+  });
+
+  const listed = await captureConsole(() => runCli(["instances", "list"]));
+  const inspected = await captureConsole(() => runCli(["instances", "inspect", record.instanceId]));
+  assert.deepEqual(calls, [["list"], ["inspect", "test-role-worker"]]);
+  assert.match(listed.output, /test-role-worker.*test-role\/worker.*已注册/);
+  assert.match(inspected.output, /Instance ID：test-role-worker/);
+  assert.match(inspected.output, /漂移：无/);
+});
+
+test("instances register 接收 role id 与 role agent id", async () => {
+  const calls = [];
+  const { runCli } = loadCliWithMocks({
+    instances: {
+      listInstances: async () => [],
+      inspectInstance: async () => {},
+      reconcileInstances: async () => {},
+      registerInstance: async (roleId, roleAgentId) => {
+        calls.push([roleId, roleAgentId]);
+        return {
+          alreadyRegistered: false,
+          instance: {
+            instanceId: "test-role-worker",
+            roleId,
+            roleAgentId
+          }
+        };
+      }
+    }
+  });
+
+  const { output } = await captureConsole(() => (
+    runCli(["instances", "register", "test-role", "worker"])
+  ));
+  assert.deepEqual(calls, [["test-role", "worker"]]);
+  assert.match(output, /Agent Instance 注册完成：test-role-worker/);
+});
+
+test("instances reconcile 输出正常、缺失、漂移及未知 Agent 数量", async () => {
+  const { runCli } = loadCliWithMocks({
+    instances: {
+      listInstances: async () => [],
+      inspectInstance: async () => {},
+      registerInstance: async () => {},
+      reconcileInstances: async () => ({
+        reconciledAt: "2026-07-20T00:00:00.000Z",
+        instances: [
+          { status: "registered" },
+          { status: "missing" },
+          { status: "drifted" }
+        ],
+        unmanagedAgents: [{ id: "main" }]
+      })
+    }
+  });
+
+  const { output } = await captureConsole(() => runCli(["instances", "reconcile"]));
+  assert.match(output, /正常：1/);
+  assert.match(output, /缺失：1/);
+  assert.match(output, /漂移：1/);
+  assert.match(output, /未由 ToolBox 管理的 OpenClaw Agent：1（未作修改）/);
+});
+
+test("instances 缺少参数和未知子命令时明确拒绝", async () => {
+  const { runCli } = loadCliWithMocks();
+  await assert.rejects(() => runCli(["instances", "inspect"]), /需要提供 instance id/);
+  await assert.rejects(() => runCli(["instances", "register", "test-role"]), /需要提供 role id 和 role agent id/);
+  await assert.rejects(() => runCli(["instances", "delete", "test-role-worker"]), /未知 instances 子命令：delete/);
 });

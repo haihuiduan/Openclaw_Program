@@ -13,6 +13,10 @@ const {
   updateRoleState
 } = require("./state");
 const { REQUIRED_AGENT_FILES, ROLE_ID_PATTERN } = require("./validator");
+const {
+  listInstanceStates,
+  readInstanceState
+} = require("../agent-instances/state");
 
 const DEFAULT_ROLE_DATA_DIRECTORY = path.join(os.homedir(), ".openclaw-installer", "roles");
 const DEFAULT_ROLE_INSTALL_ROOT = path.join(DEFAULT_ROLE_DATA_DIRECTORY, "installed");
@@ -171,6 +175,17 @@ async function removeRole(roleId, options = {}) {
 
     if (!record) {
       throw new Error("角色尚未安装：" + roleId);
+    }
+    const instanceState = await settings.instanceStateStore.readInstanceState(
+      settings.instanceStatePath
+    );
+    const referencingInstances = listInstanceStates(instanceState)
+      .filter((instance) => instance.roleId === roleId);
+    if (referencingInstances.length) {
+      throw new Error(
+        `角色仍被 Agent Instance 引用，拒绝删除 workspace：` +
+        referencingInstances.map((instance) => instance.instanceId).join(", ")
+      );
     }
     if (record.enabled === true) {
       throw new Error("角色仍处于启用状态，请先停用：" + roleId);
@@ -438,15 +453,31 @@ function createInstallResult(role, installDirectory, alreadyInstalled) {
 
 function resolveSettings(options) {
   const dataDirectory = path.resolve(options.dataDirectory || DEFAULT_ROLE_DATA_DIRECTORY);
+  const statePath = path.resolve(options.statePath || path.join(dataDirectory, "state.json"));
+  const instanceStatePath = options.instanceStatePath
+    ? path.resolve(options.instanceStatePath)
+    : inferInstanceStatePath(options, dataDirectory, statePath);
   return {
     rolesDirectory: path.resolve(options.rolesDirectory || DEFAULT_ROLES_DIRECTORY),
     installRoot: path.resolve(options.installRoot || path.join(dataDirectory, "installed")),
-    statePath: path.resolve(options.statePath || path.join(dataDirectory, "state.json")),
+    statePath,
+    instanceStatePath,
     mainWorkspace: path.resolve(options.mainWorkspace || DEFAULT_MAIN_WORKSPACE),
     fileSystem: options.fileSystem || fs,
     now: options.now || (() => new Date()),
-    stateStore: options.stateStore || { readRoleState, updateRoleState }
+    stateStore: options.stateStore || { readRoleState, updateRoleState },
+    instanceStateStore: options.instanceStateStore || { readInstanceState }
   };
+}
+
+function inferInstanceStatePath(options, dataDirectory, statePath) {
+  if (options.dataDirectory) {
+    return path.join(path.dirname(dataDirectory), "agent-instances", "state.json");
+  }
+  if (options.statePath) {
+    return path.join(path.dirname(statePath), "agent-instances.json");
+  }
+  return path.join(path.dirname(DEFAULT_ROLE_DATA_DIRECTORY), "agent-instances", "state.json");
 }
 
 function assertValidRoleId(roleId) {

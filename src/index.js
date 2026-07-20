@@ -14,6 +14,21 @@ const { listRoles, scanRoleRegistry } = require("./core/roles/registry");
 const { validateRolePackage } = require("./core/roles/validator");
 const { inspectRole, installRole, listInstalledRoles, removeRole } = require("./core/roles/installer");
 const { getRoleState, listRoleStates, readRoleState, updateRoleState, writeRoleState } = require("./core/roles/state");
+const {
+  disableInstance,
+  inspectInstance,
+  listInstances,
+  reconcileInstances,
+  registerInstance
+} = require("./core/agent-instances/manager");
+const {
+  getInstanceState,
+  listInstanceStates,
+  readInstanceState,
+  updateInstanceState,
+  writeInstanceState
+} = require("./core/agent-instances/state");
+const { createOpenClawAdapter } = require("./core/agent-instances/openClawAdapter");
 
 module.exports = {
   buildInstallPlan,
@@ -35,5 +50,16 @@ module.exports = {
   listRoleStates,
   readRoleState,
   updateRoleState,
-  writeRoleState
+  writeRoleState,
+  createOpenClawAdapter,
+  disableInstance,
+  inspectInstance,
+  listInstances,
+  reconcileInstances,
+  registerInstance,
+  getInstanceState,
+  listInstanceStates,
+  readInstanceState,
+  updateInstanceState,
+  writeInstanceState
 };

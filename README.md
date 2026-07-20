@@ -246,6 +246,10 @@ node bin/cli.js roles inspect <role-id>
 node bin/cli.js roles install <role-id>
 node bin/cli.js roles list-installed
 node bin/cli.js roles remove <role-id>
+node bin/cli.js instances list
+node bin/cli.js instances inspect <instance-id>
+node bin/cli.js instances register <role-id> <role-agent-id>
+node bin/cli.js instances reconcile
 node bin/cli.js help
 node bin/cli.js version
 ```
@@ -257,6 +261,10 @@ npm link
 openclaw-installer doctor
 openclaw-installer setup
 ```
+
+Agent Instance 首版只负责注册、查询和漂移核对。由于 OpenClaw 当前没有安全的原生
+enable/disable，本工具不会用 `agents delete`、`unbind` 或直接修改 `openclaw.json`
+来模拟停用，也不会自动删除未由 ToolBox 管理的 OpenClaw Agent。
 
 `npm link` 是开发阶段的本地链接方式，不代表已经发布到 npm。
 
