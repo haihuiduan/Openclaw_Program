@@ -450,14 +450,54 @@ test("Role Lifecycle 拒绝删除仍被 Agent Instance 引用的 workspace", asy
   const options = createOptions(root, role.roleStatePath, adapter);
   await registerInstance("test-role", "worker", options);
 
+  const installRoot = path.join(root, "role-installed");
+  const roleStateBefore = fs.readFileSync(role.roleStatePath, "utf8");
+  const instanceStateBefore = fs.readFileSync(options.instanceStatePath, "utf8");
+  const installEntriesBefore = fs.readdirSync(installRoot).sort();
+  const workspacesBefore = role.agents.map((agent) => ({
+    path: agent.workspacePath,
+    entries: fs.readdirSync(agent.workspacePath).sort(),
+    agentsFile: fs.readFileSync(path.join(agent.workspacePath, "AGENTS.md"), "utf8")
+  }));
+  let removalError;
   await assert.rejects(
-    () => removeRole("test-role", {
-      installRoot: path.join(root, "role-installed"),
-      statePath: role.roleStatePath,
-      instanceStatePath: options.instanceStatePath,
-      mainWorkspace: options.mainWorkspace
-    }),
-    /仍被 Agent Instance 引用.*test-role-worker/
+    async () => {
+      try {
+        await removeRole("test-role", {
+          installRoot,
+          statePath: role.roleStatePath,
+          instanceStatePath: options.instanceStatePath,
+          mainWorkspace: options.mainWorkspace
+        });
+      } catch (error) {
+        removalError = error;
+        throw error;
+      }
+    },
+    /Agent Instance/
   );
+
+  assert.match(removalError.message, /角色仍被 Agent Instance 引用/);
+  assert.match(removalError.message, /当前版本/);
+  assert.match(removalError.message, /不支持安全删除/);
+  assert.match(removalError.message, /暂时不能卸载/);
+  assert.match(removalError.message, /test-role-worker/);
+  assert.match(removalError.message, /保留.*workspace/);
+
   assert.equal(fs.existsSync(role.roleRoot), true);
+  assert.equal(fs.readFileSync(role.roleStatePath, "utf8"), roleStateBefore);
+  assert.equal(fs.readFileSync(options.instanceStatePath, "utf8"), instanceStateBefore);
+  assert.deepEqual(fs.readdirSync(installRoot).sort(), installEntriesBefore);
+  assert.equal(
+    fs.readdirSync(installRoot).some((entry) => entry.includes("-remove-")),
+    false
+  );
+  for (const workspace of workspacesBefore) {
+    assert.equal(fs.existsSync(workspace.path), true);
+    assert.deepEqual(fs.readdirSync(workspace.path).sort(), workspace.entries);
+    assert.equal(
+      fs.readFileSync(path.join(workspace.path, "AGENTS.md"), "utf8"),
+      workspace.agentsFile
+    );
+  }
 });

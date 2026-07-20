@@ -183,8 +183,10 @@ async function removeRole(roleId, options = {}) {
       .filter((instance) => instance.roleId === roleId);
     if (referencingInstances.length) {
       throw new Error(
-        `角色仍被 Agent Instance 引用，拒绝删除 workspace：` +
-        referencingInstances.map((instance) => instance.instanceId).join(", ")
+        `角色仍被 Agent Instance 引用：` +
+        referencingInstances.map((instance) => instance.instanceId).join(", ") +
+        "。当前版本尚不支持安全删除 Agent Instance，因此暂时不能卸载该角色。" +
+        "请保留这些 Instance 及其 workspace。"
       );
     }
     if (record.enabled === true) {
