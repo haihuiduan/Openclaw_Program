@@ -6,11 +6,20 @@ const { installOpenClaw } = require("../core/installer");
 const { runConfigure } = require("../core/configure");
 const { runVerify } = require("../core/verify");
 const { runSetup } = require("../core/setup");
+const { listRoles } = require("../core/roles/registry");
+const { inspectRole, installRole, listInstalledRoles, removeRole } = require("../core/roles/installer");
 const { formatDoctorReport } = require("./presenters/doctorPresenter");
 const { printHelp } = require("./presenters/helpPresenter");
 const { formatConfigureResult } = require("./presenters/configurePresenter");
 const { formatVerifyReport } = require("./presenters/verifyPresenter");
 const { formatSetupResult } = require("./presenters/setupPresenter");
+const {
+  formatInstalledRoleList,
+  formatRoleInspect,
+  formatRoleInstallResult,
+  formatRoleList,
+  formatRoleRemoveResult
+} = require("./presenters/rolesPresenter");
 
 /**
  * 运行 CLI 命令。
@@ -64,6 +73,39 @@ async function runCli(args) {
         process.exitCode = 1;
       }
       return result;
+    }
+    case "roles": {
+      const [subcommand = "list"] = rest;
+      if (subcommand === "list") {
+        const roles = await listRoles();
+        console.log(formatRoleList(roles));
+        return roles;
+      }
+      if (subcommand === "list-installed") {
+        const roles = await listInstalledRoles();
+        console.log(formatInstalledRoleList(roles));
+        return roles;
+      }
+      const roleId = rest[1];
+      if (!roleId) {
+        throw new Error(`roles ${subcommand} 需要提供 role id。`);
+      }
+      if (subcommand === "inspect") {
+        const role = await inspectRole(roleId);
+        console.log(formatRoleInspect(role));
+        return role;
+      }
+      if (subcommand === "install") {
+        const result = await installRole(roleId);
+        console.log(formatRoleInstallResult(result));
+        return result;
+      }
+      if (subcommand === "remove") {
+        const result = await removeRole(roleId);
+        console.log(formatRoleRemoveResult(result));
+        return result;
+      }
+      throw new Error(`未知 roles 子命令：${subcommand}\n请运行 "openclaw-installer roles list" 查看可用角色。`);
     }
     case "help":
     case "--help":

@@ -10,6 +10,10 @@ const { loadConfig } = require("./config");
 const { runConfigure } = require("./core/configure");
 const { runVerify } = require("./core/verify");
 const { runSetup } = require("./core/setup");
+const { listRoles, scanRoleRegistry } = require("./core/roles/registry");
+const { validateRolePackage } = require("./core/roles/validator");
+const { inspectRole, installRole, listInstalledRoles, removeRole } = require("./core/roles/installer");
+const { getRoleState, listRoleStates, readRoleState, updateRoleState, writeRoleState } = require("./core/roles/state");
 
 module.exports = {
   buildInstallPlan,
@@ -19,5 +23,17 @@ module.exports = {
   runConfigure,
   runDoctor,
   runVerify,
-  runSetup
+  runSetup,
+  listRoles,
+  scanRoleRegistry,
+  validateRolePackage,
+  inspectRole,
+  installRole,
+  listInstalledRoles,
+  removeRole,
+  getRoleState,
+  listRoleStates,
+  readRoleState,
+  updateRoleState,
+  writeRoleState
 };

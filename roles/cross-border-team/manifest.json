@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "cross-border-team",
+  "name": "跨境电商运营团队",
+  "version": "1.0.0",
+  "description": "由协调、选品研究和商品文案三个 Agent 组成的离线内置角色包。",
+  "agents": [
+    {
+      "id": "manager",
+      "name": "跨境运营协调助手",
+      "description": "理解任务、调度专业 Agent，并合成可追溯的最终报告。"
+    },
+    {
+      "id": "researcher",
+      "name": "跨境选品分析助手",
+      "description": "基于已验证信息进行产品机会、风险和待验证事项分析。"
+    },
+    {
+      "id": "creator",
+      "name": "跨境商品文案助手",
+      "description": "基于已验证产品资料生成准确、可审核的跨境电商文案。"
+    }
+  ]
+}
