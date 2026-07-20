@@ -38,13 +38,7 @@ npm 包版本：0.1.0
 OpenClaw 工具箱首页 → 启动控制台 / 停止控制台 / 更换 API Key
 ```
 
-当前测试状态：
-
-```text
-tests 53
-pass 53
-fail 0
-```
+测试数量会随功能演进变化，请运行 `npm test` 查看当前完整结果。
 
 ## 功能列表
 
@@ -247,6 +241,11 @@ node bin/cli.js verify
 node bin/cli.js verify --dry-run
 node bin/cli.js setup
 node bin/cli.js setup --dry-run
+node bin/cli.js roles list
+node bin/cli.js roles inspect <role-id>
+node bin/cli.js roles install <role-id>
+node bin/cli.js roles list-installed
+node bin/cli.js roles remove <role-id>
 node bin/cli.js help
 node bin/cli.js version
 ```
@@ -275,6 +274,11 @@ openclaw-installer setup
 | `openclaw-installer verify --dry-run` | 预览验证项目，不执行检查命令 |
 | `openclaw-installer setup` | 串联 doctor + install，并提示后续 configure + verify |
 | `openclaw-installer setup --dry-run` | 预览完整准备流程，不执行实际步骤 |
+| `openclaw-installer roles list` | 列出内置离线角色包 |
+| `openclaw-installer roles inspect <role-id>` | 查看角色包及安装状态，不修改文件 |
+| `openclaw-installer roles install <role-id>` | 将角色的 Agent 文件安装到独立 workspace |
+| `openclaw-installer roles list-installed` | 列出本工具安装并记录的角色 |
+| `openclaw-installer roles remove <role-id>` | 安全移除未启用且未被用户修改的角色 workspace |
 | `openclaw-installer help` | 查看帮助信息 |
 | `openclaw-installer version` | 查看当前安装助手版本 |
 

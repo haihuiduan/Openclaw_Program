@@ -9,6 +9,7 @@
   "files": [
     "bin",
     "src",
+    "roles",
     "README.md",
     "LICENSE"
   ],
@@ -43,6 +44,7 @@
     },
     "files": [
       "src/**/*",
+      "roles/**/*",
       "package.json"
     ],
     "extraMetadata": {

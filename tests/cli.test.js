@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 
 const {
@@ -33,6 +34,14 @@ function loadCliWithMocks(mocks = {}) {
 
   if (mocks.setup) {
     mockModule("src/core/setup/index.js", mocks.setup);
+  }
+
+  if (mocks.roles) {
+    mockModule("src/core/roles/registry.js", mocks.roles);
+  }
+
+  if (mocks.roleInstaller) {
+    mockModule("src/core/roles/installer.js", mocks.roleInstaller);
   }
 
   return require(projectPath("src/cli/index.js"));
@@ -221,4 +230,151 @@ test("CLI 分发 setup 命令正常", async () => {
 
   assert.equal(receivedConfig.dryRun, true);
   assert.match(output, /OpenClaw 一键准备流程预览/);
+});
+
+test("help 输出包含完整 Role Lifecycle 命令", async () => {
+  const { runCli } = loadCliWithMocks();
+  const { output } = await captureConsole(() => runCli(["help"]));
+
+  assert.match(output, /openclaw-installer roles list/);
+  assert.match(output, /openclaw-installer roles inspect <id>/);
+  assert.match(output, /openclaw-installer roles install <id>/);
+  assert.match(output, /openclaw-installer roles list-installed/);
+  assert.match(output, /openclaw-installer roles remove <id>/);
+});
+
+test("roles list 输出角色名称、版本和 Agent 数量", async () => {
+  const { runCli } = loadCliWithMocks({
+    roles: {
+      listRoles: async () => [{
+        id: "cross-border-team",
+        name: "跨境电商运营团队",
+        version: "1.0.0",
+        agentCount: 3
+      }]
+    }
+  });
+  const { output, result } = await captureConsole(() => runCli(["roles", "list"]));
+
+  assert.equal(result.length, 1);
+  assert.match(output, /跨境电商运营团队/);
+  assert.match(output, /1\.0\.0/);
+  assert.match(output, /3 Agents/);
+});
+
+test("未知 roles 子命令会被拒绝", async () => {
+  const { runCli } = loadCliWithMocks();
+
+  await assert.rejects(
+    () => runCli(["roles", "publish", "test-role"]),
+    /未知 roles 子命令：publish/
+  );
+});
+
+test("roles inspect 输出名称、版本、描述和 Agent 列表", async () => {
+  const { runCli } = loadCliWithMocks({
+    roleInstaller: {
+      inspectRole: async () => ({
+        id: "cross-border-team",
+        name: "跨境电商运营团队",
+        version: "1.0.0",
+        description: "离线角色包",
+        agentCount: 1,
+        installed: true,
+        installedVersion: "1.0.0",
+        installedAt: "2026-07-20T00:00:00.000Z",
+        agents: [{ id: "manager", name: "协调助手", description: "协调团队" }]
+      }),
+      installRole: async () => {},
+      listInstalledRoles: async () => [],
+      removeRole: async () => {}
+    }
+  });
+  const { output } = await captureConsole(() => runCli(["roles", "inspect", "cross-border-team"]));
+
+  assert.match(output, /名称：跨境电商运营团队/);
+  assert.match(output, /版本：1\.0\.0/);
+  assert.match(output, /描述：离线角色包/);
+  assert.match(output, /Role ID：cross-border-team/);
+  assert.match(output, /Agent 数量：1/);
+  assert.match(output, /安装状态：已安装/);
+  assert.match(output, /已安装版本：1\.0\.0/);
+  assert.match(output, /协调助手 \(manager\)/);
+});
+
+test("roles list-installed 输出已安装角色且不要求 role id", async () => {
+  const { runCli } = loadCliWithMocks({
+    roleInstaller: {
+      inspectRole: async () => {},
+      installRole: async () => {},
+      listInstalledRoles: async () => [{
+        id: "cross-border-team",
+        name: "跨境电商运营团队",
+        version: "1.0.0",
+        installedAt: "2026-07-20T00:00:00.000Z",
+        status: "installed",
+        agentCount: 3
+      }],
+      removeRole: async () => {}
+    }
+  });
+  const { output, result } = await captureConsole(() => runCli(["roles", "list-installed"]));
+
+  assert.equal(result.length, 1);
+  assert.match(output, /cross-border-team/);
+  assert.match(output, /跨境电商运营团队/);
+  assert.match(output, /installed/);
+  assert.match(output, /3 Agents/);
+});
+
+test("roles list-installed 无记录时输出清晰提示", async () => {
+  const { runCli } = loadCliWithMocks({
+    roleInstaller: {
+      inspectRole: async () => {},
+      installRole: async () => {},
+      listInstalledRoles: async () => [],
+      removeRole: async () => {}
+    }
+  });
+  const { output } = await captureConsole(() => runCli(["roles", "list-installed"]));
+  assert.match(output, /当前没有已安装角色/);
+});
+
+test("roles install 和 remove 分发到生命周期模块", async () => {
+  const calls = [];
+  const { runCli } = loadCliWithMocks({
+    roleInstaller: {
+      inspectRole: async () => {},
+      installRole: async (roleId) => {
+        calls.push(["install", roleId]);
+        return { name: "测试角色", version: "1.0.0", agentCount: 2 };
+      },
+      listInstalledRoles: async () => [],
+      removeRole: async (roleId) => {
+        calls.push(["remove", roleId]);
+        return { roleId, removed: true };
+      }
+    }
+  });
+
+  const installOutput = await captureConsole(() => runCli(["roles", "install", "test-role"]));
+  const removeOutput = await captureConsole(() => runCli(["roles", "remove", "test-role"]));
+
+  assert.deepEqual(calls, [["install", "test-role"], ["remove", "test-role"]]);
+  assert.match(installOutput.output, /角色安装完成/);
+  assert.match(removeOutput.output, /角色已删除/);
+});
+
+test("roles 生命周期命令缺少 role id 时会被拒绝", async () => {
+  const { runCli } = loadCliWithMocks();
+  await assert.rejects(() => runCli(["roles", "inspect"]), /需要提供 role id/);
+});
+
+test("roles CLI 发生参数错误时进程退出码为 1", () => {
+  const result = spawnSync(process.execPath, [projectPath("bin/cli.js"), "roles", "inspect"], {
+    encoding: "utf8"
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /需要提供 role id/);
 });

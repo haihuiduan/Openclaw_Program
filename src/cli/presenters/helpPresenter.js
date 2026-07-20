@@ -19,6 +19,11 @@ function printHelp() {
   openclaw-installer verify --dry-run    预览验证项目，不执行检查命令
   openclaw-installer setup               执行 OpenClaw 一键准备流程
   openclaw-installer setup --dry-run     预览一键准备流程，不修改文件
+  openclaw-installer roles list         列出内置离线角色
+  openclaw-installer roles inspect <id> 查看角色详情
+  openclaw-installer roles install <id> 安装角色到独立 workspace
+  openclaw-installer roles list-installed 列出已安装角色
+  openclaw-installer roles remove <id>  删除已安装但未启用的角色
   openclaw-installer help                查看帮助信息
   openclaw-installer version             查看当前安装助手版本
 
