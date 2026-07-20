@@ -8,6 +8,12 @@ const { runVerify } = require("../core/verify");
 const { runSetup } = require("../core/setup");
 const { listRoles } = require("../core/roles/registry");
 const { inspectRole, installRole, listInstalledRoles, removeRole } = require("../core/roles/installer");
+const {
+  inspectInstance,
+  listInstances,
+  reconcileInstances,
+  registerInstance
+} = require("../core/agent-instances/manager");
 const { formatDoctorReport } = require("./presenters/doctorPresenter");
 const { printHelp } = require("./presenters/helpPresenter");
 const { formatConfigureResult } = require("./presenters/configurePresenter");
@@ -20,6 +26,12 @@ const {
   formatRoleList,
   formatRoleRemoveResult
 } = require("./presenters/rolesPresenter");
+const {
+  formatInstanceInspect,
+  formatInstanceList,
+  formatInstanceRegisterResult,
+  formatReconcileResult
+} = require("./presenters/agentInstancesPresenter");
 
 /**
  * 运行 CLI 命令。
@@ -106,6 +118,42 @@ async function runCli(args) {
         return result;
       }
       throw new Error(`未知 roles 子命令：${subcommand}\n请运行 "openclaw-installer roles list" 查看可用角色。`);
+    }
+    case "instances": {
+      const [subcommand = "list"] = rest;
+      if (subcommand === "list") {
+        const instances = await listInstances();
+        console.log(formatInstanceList(instances));
+        return instances;
+      }
+      if (subcommand === "reconcile") {
+        const result = await reconcileInstances();
+        console.log(formatReconcileResult(result));
+        return result;
+      }
+      if (subcommand === "inspect") {
+        const instanceId = rest[1];
+        if (!instanceId) {
+          throw new Error("instances inspect 需要提供 instance id。");
+        }
+        const instance = await inspectInstance(instanceId);
+        console.log(formatInstanceInspect(instance));
+        return instance;
+      }
+      if (subcommand === "register") {
+        const roleId = rest[1];
+        const roleAgentId = rest[2];
+        if (!roleId || !roleAgentId) {
+          throw new Error("instances register 需要提供 role id 和 role agent id。");
+        }
+        const result = await registerInstance(roleId, roleAgentId);
+        console.log(formatInstanceRegisterResult(result));
+        return result;
+      }
+      throw new Error(
+        `未知 instances 子命令：${subcommand}\n` +
+        "请运行 openclaw-installer help 查看可用命令。"
+      );
     }
     case "help":
     case "--help":
