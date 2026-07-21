@@ -52,6 +52,14 @@ function loadCliWithMocks(mocks = {}) {
     mockModule("src/core/teams/manager.js", mocks.teams);
   }
 
+  if (mocks.projects) {
+    mockModule("src/core/projects/manager.js", mocks.projects);
+  }
+
+  if (mocks.tasks) {
+    mockModule("src/core/tasks/manager.js", mocks.tasks);
+  }
+
   return require(projectPath("src/cli/index.js"));
 }
 
@@ -655,4 +663,111 @@ test("teams 参数缺失、未知选项和未知子命令返回中文错误", as
     /未知或不支持的 teams 选项/
   );
   await assert.rejects(() => runCli(["teams", "execute", "test-team"]), /未知 teams 子命令/);
+});
+
+function projectCliRecord() {
+  return {
+    projectId: "test-project", name: "测试项目", description: "", teamId: "test-team",
+    status: "draft", archivedAt: null, executionMode: "confirm", maxConcurrency: 2,
+    teamSyncStatus: "in-sync", teamSnapshotHealth: { status: "ready", issues: [] },
+    taskSummary: { total: 0 }, teamSnapshot: {}, currentTeam: null
+  };
+}
+function projectCliMocks(calls) {
+  const record = projectCliRecord();
+  return {
+    listProjects: async () => { calls.push(["list"]); return [record]; },
+    inspectProject: async (id) => { calls.push(["inspect", id]); return record; },
+    createProject: async (input) => { calls.push(["create", input]); return record; },
+    updateProject: async (id, patch) => { calls.push(["update", id, patch]); return record; },
+    activateProject: async (id) => { calls.push(["activate", id]); return record; },
+    completeProject: async (id) => { calls.push(["complete", id]); return record; },
+    archiveProject: async (id) => { calls.push(["archive", id]); return record; },
+    unarchiveProject: async (id) => { calls.push(["unarchive", id]); return record; },
+    previewProjectTeamSync: async (id) => { calls.push(["preview", id]); return { projectId: id, teamSyncStatus: "out-of-sync", differences: [{}] }; },
+    syncProjectTeam: async (id, input) => { calls.push(["sync", id, input]); return record; }
+  };
+}
+
+test("projects CLI 解析创建、生命周期与显式 Team 同步", async () => {
+  const calls = [];
+  const { runCli } = loadCliWithMocks({ projects: projectCliMocks(calls) });
+  await captureConsole(() => runCli(["projects", "create", "test-project", "--name", "测试", "--team", "test-team", "--execution-mode", "auto", "--max-concurrency", "4"]));
+  await captureConsole(() => runCli(["projects", "activate", "test-project"]));
+  await captureConsole(() => runCli(["projects", "sync-preview", "test-project"]));
+  await captureConsole(() => runCli(["projects", "sync-team", "test-project", "--confirm", "--expected-team-updated-at", "2026-07-21T00:00:00.000Z", "--sync-execution-settings"]));
+  assert.deepEqual(calls, [
+    ["create", { projectId: "test-project", name: "测试", teamId: "test-team", executionMode: "auto", maxConcurrency: 4 }],
+    ["activate", "test-project"], ["preview", "test-project"],
+    ["sync", "test-project", { confirm: true, expectedSourceTeamUpdatedAt: "2026-07-21T00:00:00.000Z", syncExecutionSettings: true }]
+  ]);
+});
+
+test("projects CLI 拒绝缺失、未知参数及未确认同步", async () => {
+  const { runCli } = loadCliWithMocks();
+  await assert.rejects(() => runCli(["projects", "create", "test-project", "--name", "测试"]), /--team/);
+  await assert.rejects(() => runCli(["projects", "update", "test-project"]), /至少需要/);
+  await assert.rejects(() => runCli(["projects", "create", "test-project", "--name", "测试", "--team", "test-team", "--unknown", "x"]), /未知或不支持/);
+  await assert.rejects(() => runCli(["projects", "sync-team", "test-project", "--expected-team-updated-at", "x"]), /--confirm/);
+});
+
+function taskCliRecord() {
+  return { taskId: "test-task", projectId: "test-project", title: "任务", status: "pending",
+    computedStatus: "pending", priority: "medium", critical: false, source: "user",
+    assignedInstanceId: null, dependencies: [], dependencyIssues: [] };
+}
+function taskCliMocks(calls) {
+  const record = taskCliRecord();
+  const call = (name) => async (...args) => { calls.push([name, ...args]); return record; };
+  return {
+    listTasks: async (...args) => { calls.push(["list", ...args]); return [record]; },
+    inspectTask: call("inspect"), createTask: call("create"), updateTask: call("update"),
+    assignTask: call("assign"), setTaskCritical: call("critical"),
+    addTaskDependency: call("add-dependency"), removeTaskDependency: call("remove-dependency"),
+    completeTask: call("complete"), cancelTask: call("cancel")
+  };
+}
+
+test("tasks CLI 支持重复依赖、有限状态与语义化操作", async () => {
+  const calls = [];
+  const { runCli } = loadCliWithMocks({ tasks: taskCliMocks(calls) });
+  await captureConsole(() => runCli(["tasks", "create", "test-task", "--project", "test-project", "--title", "任务", "--dependency", "a-task", "--dependency", "b-task", "--critical", "--critical-reason", "关键", "--critical-source", "user", "--max-retries", "2"]));
+  await captureConsole(() => runCli(["tasks", "unassign", "test-task"]));
+  await captureConsole(() => runCli(["tasks", "set-critical", "test-task", "--critical", "false"]));
+  await captureConsole(() => runCli(["tasks", "complete", "test-task"]));
+  assert.deepEqual(calls[0], ["create", {
+    taskId: "test-task", projectId: "test-project", title: "任务", dependencies: ["a-task", "b-task"],
+    critical: true, criticalReason: "关键", criticalSource: "user", retryPolicy: { maxRetries: 2 }
+  }]);
+  assert.deepEqual(calls.slice(1), [
+    ["assign", "test-task", null], ["critical", "test-task", { critical: false }], ["complete", "test-task"]
+  ]);
+});
+
+test("tasks list 通过 Manager options 按 Project 查询", async () => {
+  const calls = [];
+  const { runCli } = loadCliWithMocks({ tasks: taskCliMocks(calls) });
+  const { output } = await captureConsole(() => runCli(["tasks", "list", "--project", "test-project"]));
+  assert.deepEqual(calls, [["list", { projectId: "test-project" }]]);
+  assert.match(output, /test-task.*pending/);
+});
+
+test("tasks CLI 拒绝缺失参数、未知选项和未支持 delete", async () => {
+  const { runCli } = loadCliWithMocks();
+  await assert.rejects(() => runCli(["tasks", "list"]), /--project/);
+  await assert.rejects(() => runCli(["tasks", "create", "test-task", "--project", "test-project"]), /--title/);
+  await assert.rejects(() => runCli(["tasks", "create", "test-task", "--project", "test-project", "--title", "任务", "--critical"]), /--critical-reason 和 --critical-source/);
+  await assert.rejects(() => runCli(["tasks", "update", "test-task"]), /至少需要/);
+  await assert.rejects(() => runCli(["tasks", "set-critical", "test-task", "--critical", "true"]), /--reason 和 --source/);
+  await assert.rejects(() => runCli(["tasks", "delete", "test-task"]), /未知 tasks 子命令/);
+});
+
+test("help 包含 Project Task Core 且不暗示 auto 会执行", async () => {
+  const { runCli } = loadCliWithMocks();
+  const { output } = await captureConsole(() => runCli(["help"]));
+  assert.match(output, /projects create/);
+  assert.match(output, /projects sync-team/);
+  assert.match(output, /tasks create/);
+  assert.match(output, /tasks complete.*不会执行 Agent/);
+  assert.doesNotMatch(output, /tasks delete|tasks run|tasks execute/);
 });

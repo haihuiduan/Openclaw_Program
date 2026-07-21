@@ -258,6 +258,27 @@ node bin/cli.js teams add-member <team-id> <instance-id>
 node bin/cli.js teams remove-member <team-id> <instance-id>
 node bin/cli.js teams set-manager <team-id> <instance-id>
 node bin/cli.js teams delete <team-id> --confirm
+node bin/cli.js projects list
+node bin/cli.js projects inspect <project-id>
+node bin/cli.js projects create <project-id> --name <name> --team <team-id>
+node bin/cli.js projects update <project-id> [--name <name>] [--description <text>]
+node bin/cli.js projects activate <project-id>
+node bin/cli.js projects complete <project-id>
+node bin/cli.js projects archive <project-id>
+node bin/cli.js projects unarchive <project-id>
+node bin/cli.js projects sync-preview <project-id>
+node bin/cli.js projects sync-team <project-id> --confirm --expected-team-updated-at <timestamp>
+node bin/cli.js tasks list --project <project-id>
+node bin/cli.js tasks inspect <task-id>
+node bin/cli.js tasks create <task-id> --project <project-id> --title <title>
+node bin/cli.js tasks update <task-id> [--title <title>] [--priority low|medium|high]
+node bin/cli.js tasks assign <task-id> <instance-id>
+node bin/cli.js tasks unassign <task-id>
+node bin/cli.js tasks set-critical <task-id> --critical true|false [--reason <reason>] [--source user|manager]
+node bin/cli.js tasks add-dependency <task-id> <dependency-task-id>
+node bin/cli.js tasks remove-dependency <task-id> <dependency-task-id>
+node bin/cli.js tasks complete <task-id>
+node bin/cli.js tasks cancel <task-id>
 node bin/cli.js help
 node bin/cli.js version
 ```
@@ -277,6 +298,11 @@ enable/disable，本工具不会用 `agents delete`、`unbind` 或直接修改 `
 Team Builder 首版只保存 Team 与 Agent Instance ID 的映射，不复制 Role、workspace、
 agentDir 或 OpenClaw 配置。Team 的 `ready`、`degraded`、`invalid` 健康状态由当前
 Instance State 动态计算；本阶段不执行任务、不调用 OpenClaw，也不包含 Team Builder GUI。
+
+Project / Task Core 首版把 Project 绑定到创建时的 Team 安全快照；Team 后续变化不会自动
+改写已有 Project，用户只能在预览差异后显式同步。Task 只支持 pending、completed、
+cancelled 三种持久状态，并动态计算依赖阻塞；`auto`、并发与重试字段目前只是未来执行偏好，
+不会调用 Agent、OpenClaw、workspace 或 agentDir，也不包含任务执行器与 GUI。
 
 `npm link` 是开发阶段的本地链接方式，不代表已经发布到 npm。
 

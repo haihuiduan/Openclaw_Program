@@ -24,6 +24,30 @@ const {
   setTeamManager,
   updateTeam
 } = require("../core/teams/manager");
+const {
+  activateProject,
+  archiveProject,
+  completeProject,
+  createProject,
+  inspectProject,
+  listProjects,
+  previewProjectTeamSync,
+  syncProjectTeam,
+  unarchiveProject,
+  updateProject
+} = require("../core/projects/manager");
+const {
+  addTaskDependency,
+  assignTask,
+  cancelTask,
+  completeTask,
+  createTask,
+  inspectTask,
+  listTasks,
+  removeTaskDependency,
+  setTaskCritical,
+  updateTask
+} = require("../core/tasks/manager");
 const { formatDoctorReport } = require("./presenters/doctorPresenter");
 const { printHelp } = require("./presenters/helpPresenter");
 const { formatConfigureResult } = require("./presenters/configurePresenter");
@@ -49,6 +73,19 @@ const {
   formatTeamMutationResult
 } = require("./presenters/teamsPresenter");
 const { parseTeamsCommand } = require("./teamsParser");
+const { parseProjectsCommand } = require("./projectsParser");
+const { parseTasksCommand } = require("./tasksParser");
+const {
+  formatProjectInspect,
+  formatProjectList,
+  formatProjectMutation,
+  formatProjectSyncPreview
+} = require("./presenters/projectsPresenter");
+const {
+  formatTaskInspect,
+  formatTaskList,
+  formatTaskMutation
+} = require("./presenters/tasksPresenter");
 
 /**
  * 运行 CLI 命令。
@@ -212,6 +249,83 @@ async function runCli(args) {
       const result = await deleteTeam(parsed.teamId);
       console.log(formatTeamDeleteResult(result));
       return result;
+    }
+    case "projects": {
+      const parsed = parseProjectsCommand(rest);
+      if (parsed.subcommand === "list") {
+        const projects = await listProjects();
+        console.log(formatProjectList(projects));
+        return projects;
+      }
+      if (parsed.subcommand === "inspect") {
+        const project = await inspectProject(parsed.projectId);
+        console.log(formatProjectInspect(project));
+        return project;
+      }
+      if (parsed.subcommand === "create") {
+        const project = await createProject(parsed.input);
+        console.log(formatProjectMutation(project, "创建"));
+        return project;
+      }
+      if (parsed.subcommand === "update") {
+        const project = await updateProject(parsed.projectId, parsed.patch);
+        console.log(formatProjectMutation(project, "更新"));
+        return project;
+      }
+      if (parsed.subcommand === "activate") {
+        const project = await activateProject(parsed.projectId);
+        console.log(formatProjectMutation(project, "激活"));
+        return project;
+      }
+      if (parsed.subcommand === "complete") {
+        const project = await completeProject(parsed.projectId);
+        console.log(formatProjectMutation(project, "完成"));
+        return project;
+      }
+      if (parsed.subcommand === "archive") {
+        const project = await archiveProject(parsed.projectId);
+        console.log(formatProjectMutation(project, "归档"));
+        return project;
+      }
+      if (parsed.subcommand === "unarchive") {
+        const project = await unarchiveProject(parsed.projectId);
+        console.log(formatProjectMutation(project, "取消归档"));
+        return project;
+      }
+      if (parsed.subcommand === "sync-preview") {
+        const preview = await previewProjectTeamSync(parsed.projectId);
+        console.log(formatProjectSyncPreview(preview));
+        return preview;
+      }
+      const project = await syncProjectTeam(parsed.projectId, parsed.input);
+      console.log(formatProjectMutation(project, "Team 同步"));
+      return project;
+    }
+    case "tasks": {
+      const parsed = parseTasksCommand(rest);
+      if (parsed.subcommand === "list") {
+        const tasks = await listTasks({ projectId: parsed.projectId });
+        console.log(formatTaskList(tasks));
+        return tasks;
+      }
+      if (parsed.subcommand === "inspect") {
+        const task = await inspectTask(parsed.taskId);
+        console.log(formatTaskInspect(task));
+        return task;
+      }
+      let task;
+      let action;
+      if (parsed.subcommand === "create") [task, action] = [await createTask(parsed.input), "创建"];
+      if (parsed.subcommand === "update") [task, action] = [await updateTask(parsed.taskId, parsed.patch), "更新"];
+      if (parsed.subcommand === "assign") [task, action] = [await assignTask(parsed.taskId, parsed.instanceId), "分配"];
+      if (parsed.subcommand === "unassign") [task, action] = [await assignTask(parsed.taskId, null), "取消分配"];
+      if (parsed.subcommand === "set-critical") [task, action] = [await setTaskCritical(parsed.taskId, parsed.input), "关键属性更新"];
+      if (parsed.subcommand === "add-dependency") [task, action] = [await addTaskDependency(parsed.taskId, parsed.dependencyTaskId), "依赖添加"];
+      if (parsed.subcommand === "remove-dependency") [task, action] = [await removeTaskDependency(parsed.taskId, parsed.dependencyTaskId), "依赖移除"];
+      if (parsed.subcommand === "complete") [task, action] = [await completeTask(parsed.taskId), "完成"];
+      if (parsed.subcommand === "cancel") [task, action] = [await cancelTask(parsed.taskId), "取消"];
+      console.log(formatTaskMutation(task, action));
+      return task;
     }
     case "help":
     case "--help":

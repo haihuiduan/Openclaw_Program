@@ -36,6 +36,27 @@ function printHelp() {
   openclaw-installer teams remove-member <id> <instance-id> 移除非 Manager 成员
   openclaw-installer teams set-manager <id> <instance-id> 指定已有成员为 Manager
   openclaw-installer teams delete <id> --confirm 只删除 Team State
+  openclaw-installer projects list      列出 Project
+  openclaw-installer projects inspect <id> 查看 Project、Team 快照与 Task 摘要
+  openclaw-installer projects create <id> --name <名称> --team <team-id>
+  openclaw-installer projects update <id> [--name <名称>] [--description <描述>]
+  openclaw-installer projects activate <id> 激活 draft Project
+  openclaw-installer projects complete <id> 完成没有 pending Task 的 Project
+  openclaw-installer projects archive <id> 归档并设为只读
+  openclaw-installer projects unarchive <id> 取消归档
+  openclaw-installer projects sync-preview <id> 预览 Team 配置差异
+  openclaw-installer projects sync-team <id> --confirm --expected-team-updated-at <时间>
+  openclaw-installer tasks list --project <project-id> 列出 Project Task
+  openclaw-installer tasks inspect <id> 查看 Task 与动态依赖状态
+  openclaw-installer tasks create <id> --project <project-id> --title <标题>
+  openclaw-installer tasks update <id> [--title <标题>] [--priority low|medium|high]
+  openclaw-installer tasks assign <id> <instance-id> 分配快照成员
+  openclaw-installer tasks unassign <id> 取消分配
+  openclaw-installer tasks set-critical <id> --critical true|false [--reason <原因>] [--source user|manager]
+  openclaw-installer tasks add-dependency <id> <dependency-id> 添加同 Project 依赖
+  openclaw-installer tasks remove-dependency <id> <dependency-id> 移除依赖
+  openclaw-installer tasks complete <id> 标记完成（不会执行 Agent）
+  openclaw-installer tasks cancel <id> 标记取消
   openclaw-installer help                查看帮助信息
   openclaw-installer version             查看当前安装助手版本
 

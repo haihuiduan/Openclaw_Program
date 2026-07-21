@@ -48,6 +48,54 @@ const {
   updateTeamState,
   writeTeamState
 } = require("./core/teams/state");
+const {
+  activateProject,
+  archiveProject,
+  completeProject,
+  createProject,
+  inspectProject,
+  listProjects,
+  previewProjectTeamSync,
+  summarizeProject,
+  syncProjectTeam,
+  unarchiveProject,
+  updateProject
+} = require("./core/projects/manager");
+const {
+  createEmptyProjectState,
+  getProjectState,
+  listProjectStates,
+  readProjectState,
+  updateProjectState,
+  writeProjectState
+} = require("./core/projects/state");
+const {
+  addTaskDependency,
+  assignTask,
+  cancelTask,
+  completeTask,
+  createTask,
+  inspectTask,
+  listTasks,
+  removeTaskDependency,
+  setTaskCritical,
+  updateTask
+} = require("./core/tasks/manager");
+const {
+  createEmptyTaskState,
+  getTaskState,
+  listTaskStates,
+  readTaskState,
+  updateTaskState,
+  writeTaskState
+} = require("./core/tasks/state");
+const {
+  buildTaskGraph,
+  calculateTaskBlocking,
+  detectDependencyCycle,
+  getReadyTaskCandidates,
+  validateTaskDependencies
+} = require("./core/tasks/dependencies");
 
 module.exports = {
   buildInstallPlan,
@@ -95,5 +143,43 @@ module.exports = {
   listTeamStates,
   readTeamState,
   updateTeamState,
-  writeTeamState
+  writeTeamState,
+  activateProject,
+  archiveProject,
+  completeProject,
+  createProject,
+  inspectProject,
+  listProjects,
+  previewProjectTeamSync,
+  summarizeProject,
+  syncProjectTeam,
+  unarchiveProject,
+  updateProject,
+  createEmptyProjectState,
+  getProjectState,
+  listProjectStates,
+  readProjectState,
+  updateProjectState,
+  writeProjectState,
+  addTaskDependency,
+  assignTask,
+  cancelTask,
+  completeTask,
+  createTask,
+  inspectTask,
+  listTasks,
+  removeTaskDependency,
+  setTaskCritical,
+  updateTask,
+  createEmptyTaskState,
+  getTaskState,
+  listTaskStates,
+  readTaskState,
+  updateTaskState,
+  writeTaskState,
+  buildTaskGraph,
+  calculateTaskBlocking,
+  detectDependencyCycle,
+  getReadyTaskCandidates,
+  validateTaskDependencies
 };
