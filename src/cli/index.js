@@ -14,6 +14,16 @@ const {
   reconcileInstances,
   registerInstance
 } = require("../core/agent-instances/manager");
+const {
+  addTeamMember,
+  createTeam,
+  deleteTeam,
+  inspectTeam,
+  listTeams,
+  removeTeamMember,
+  setTeamManager,
+  updateTeam
+} = require("../core/teams/manager");
 const { formatDoctorReport } = require("./presenters/doctorPresenter");
 const { printHelp } = require("./presenters/helpPresenter");
 const { formatConfigureResult } = require("./presenters/configurePresenter");
@@ -32,6 +42,13 @@ const {
   formatInstanceRegisterResult,
   formatReconcileResult
 } = require("./presenters/agentInstancesPresenter");
+const {
+  formatTeamDeleteResult,
+  formatTeamInspect,
+  formatTeamList,
+  formatTeamMutationResult
+} = require("./presenters/teamsPresenter");
+const { parseTeamsCommand } = require("./teamsParser");
 
 /**
  * 运行 CLI 命令。
@@ -154,6 +171,47 @@ async function runCli(args) {
         `未知 instances 子命令：${subcommand}\n` +
         "请运行 openclaw-installer help 查看可用命令。"
       );
+    }
+    case "teams": {
+      const parsed = parseTeamsCommand(rest);
+      if (parsed.subcommand === "list") {
+        const teams = await listTeams();
+        console.log(formatTeamList(teams));
+        return teams;
+      }
+      if (parsed.subcommand === "inspect") {
+        const team = await inspectTeam(parsed.teamId);
+        console.log(formatTeamInspect(team));
+        return team;
+      }
+      if (parsed.subcommand === "create") {
+        const team = await createTeam(parsed.teamId, parsed.input);
+        console.log(formatTeamMutationResult(team, "创建"));
+        return team;
+      }
+      if (parsed.subcommand === "update") {
+        const team = await updateTeam(parsed.teamId, parsed.patch);
+        console.log(formatTeamMutationResult(team, "更新"));
+        return team;
+      }
+      if (parsed.subcommand === "add-member") {
+        const team = await addTeamMember(parsed.teamId, parsed.instanceId);
+        console.log(formatTeamMutationResult(team, "成员添加"));
+        return team;
+      }
+      if (parsed.subcommand === "remove-member") {
+        const team = await removeTeamMember(parsed.teamId, parsed.instanceId);
+        console.log(formatTeamMutationResult(team, "成员移除"));
+        return team;
+      }
+      if (parsed.subcommand === "set-manager") {
+        const team = await setTeamManager(parsed.teamId, parsed.instanceId);
+        console.log(formatTeamMutationResult(team, "Manager 更新"));
+        return team;
+      }
+      const result = await deleteTeam(parsed.teamId);
+      console.log(formatTeamDeleteResult(result));
+      return result;
     }
     case "help":
     case "--help":

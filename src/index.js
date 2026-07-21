@@ -29,6 +29,25 @@ const {
   writeInstanceState
 } = require("./core/agent-instances/state");
 const { createOpenClawAdapter } = require("./core/agent-instances/openClawAdapter");
+const {
+  addTeamMember,
+  assessTeamHealth,
+  createTeam,
+  deleteTeam,
+  inspectTeam,
+  listTeams,
+  removeTeamMember,
+  setTeamManager,
+  updateTeam
+} = require("./core/teams/manager");
+const {
+  createEmptyTeamState,
+  getTeamState,
+  listTeamStates,
+  readTeamState,
+  updateTeamState,
+  writeTeamState
+} = require("./core/teams/state");
 
 module.exports = {
   buildInstallPlan,
@@ -61,5 +80,20 @@ module.exports = {
   listInstanceStates,
   readInstanceState,
   updateInstanceState,
-  writeInstanceState
+  writeInstanceState,
+  addTeamMember,
+  assessTeamHealth,
+  createTeam,
+  deleteTeam,
+  inspectTeam,
+  listTeams,
+  removeTeamMember,
+  setTeamManager,
+  updateTeam,
+  createEmptyTeamState,
+  getTeamState,
+  listTeamStates,
+  readTeamState,
+  updateTeamState,
+  writeTeamState
 };

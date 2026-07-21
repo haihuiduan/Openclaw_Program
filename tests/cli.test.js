@@ -48,6 +48,10 @@ function loadCliWithMocks(mocks = {}) {
     mockModule("src/core/agent-instances/manager.js", mocks.instances);
   }
 
+  if (mocks.teams) {
+    mockModule("src/core/teams/manager.js", mocks.teams);
+  }
+
   return require(projectPath("src/cli/index.js"));
 }
 
@@ -489,4 +493,166 @@ test("instances 缺少参数和未知子命令时明确拒绝", async () => {
   await assert.rejects(() => runCli(["instances", "inspect"]), /需要提供 instance id/);
   await assert.rejects(() => runCli(["instances", "register", "test-role"]), /需要提供 role id 和 role agent id/);
   await assert.rejects(() => runCli(["instances", "delete", "test-role-worker"]), /未知 instances 子命令：delete/);
+});
+
+function createTeamCliRecord(overrides = {}) {
+  return {
+    teamId: "test-team",
+    name: "测试团队",
+    description: "",
+    managerInstanceId: "test-role-manager",
+    memberInstanceIds: ["test-role-manager", "test-role-worker"],
+    executionMode: "confirm",
+    maxConcurrency: 2,
+    createdAt: "2026-07-21T00:00:00.000Z",
+    updatedAt: "2026-07-21T00:00:00.000Z",
+    health: { status: "ready", issues: [] },
+    resolvedManager: null,
+    resolvedMembers: [],
+    ...overrides
+  };
+}
+
+function createTeamCliMocks(calls) {
+  const record = createTeamCliRecord();
+  return {
+    listTeams: async () => {
+      calls.push(["list"]);
+      return [record];
+    },
+    inspectTeam: async (teamId) => {
+      calls.push(["inspect", teamId]);
+      return record;
+    },
+    createTeam: async (teamId, input) => {
+      calls.push(["create", teamId, input]);
+      return record;
+    },
+    updateTeam: async (teamId, patch) => {
+      calls.push(["update", teamId, patch]);
+      return record;
+    },
+    addTeamMember: async (teamId, instanceId) => {
+      calls.push(["add-member", teamId, instanceId]);
+      return record;
+    },
+    removeTeamMember: async (teamId, instanceId) => {
+      calls.push(["remove-member", teamId, instanceId]);
+      return record;
+    },
+    setTeamManager: async (teamId, instanceId) => {
+      calls.push(["set-manager", teamId, instanceId]);
+      return record;
+    },
+    deleteTeam: async (teamId) => {
+      calls.push(["delete", teamId]);
+      return { teamId, deleted: true };
+    }
+  };
+}
+
+test("help 输出包含完整 Team Builder 首版命令", async () => {
+  const { runCli } = loadCliWithMocks();
+  const { output } = await captureConsole(() => runCli(["help"]));
+  for (const command of [
+    "teams list",
+    "teams inspect <id>",
+    "teams create <id>",
+    "teams update <id>",
+    "teams add-member <id>",
+    "teams remove-member <id>",
+    "teams set-manager <id>",
+    "teams delete <id> --confirm"
+  ]) {
+    assert.match(output, new RegExp(command.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  assert.doesNotMatch(output, /teams execute|teams run|teams project|teams task/);
+});
+
+test("teams list 和 inspect 分发并输出动态健康状态", async () => {
+  const calls = [];
+  const { runCli } = loadCliWithMocks({ teams: createTeamCliMocks(calls) });
+  const listed = await captureConsole(() => runCli(["teams", "list"]));
+  const inspected = await captureConsole(() => runCli(["teams", "inspect", "test-team"]));
+  assert.deepEqual(calls, [["list"], ["inspect", "test-team"]]);
+  assert.match(listed.output, /test-team.*测试团队.*ready/);
+  assert.match(inspected.output, /Team ID：test-team/);
+  assert.match(inspected.output, /健康状态：ready/);
+});
+
+test("teams create 解析重复 member 及全部 Team 配置", async () => {
+  const calls = [];
+  const { runCli } = loadCliWithMocks({ teams: createTeamCliMocks(calls) });
+  const { output } = await captureConsole(() => runCli([
+    "teams", "create", "test-team",
+    "--name", "测试团队",
+    "--description", "团队描述",
+    "--manager", "test-role-manager",
+    "--member", "test-role-worker",
+    "--member", "test-role-manager",
+    "--execution-mode", "auto",
+    "--max-concurrency", "4"
+  ]));
+  assert.deepEqual(calls, [["create", "test-team", {
+    name: "测试团队",
+    description: "团队描述",
+    managerInstanceId: "test-role-manager",
+    memberInstanceIds: ["test-role-worker", "test-role-manager"],
+    executionMode: "auto",
+    maxConcurrency: 4
+  }]]);
+  assert.match(output, /Team 创建完成：test-team/);
+});
+
+test("teams update 与成员管理命令分发到独立 Manager API", async () => {
+  const calls = [];
+  const { runCli } = loadCliWithMocks({ teams: createTeamCliMocks(calls) });
+  await captureConsole(() => runCli([
+    "teams", "update", "test-team", "--name", "新名称",
+    "--execution-mode", "auto", "--max-concurrency", "8"
+  ]));
+  await captureConsole(() => runCli(["teams", "add-member", "test-team", "test-role-creator"]));
+  await captureConsole(() => runCli(["teams", "remove-member", "test-team", "test-role-worker"]));
+  await captureConsole(() => runCli(["teams", "set-manager", "test-team", "test-role-creator"]));
+  assert.deepEqual(calls, [
+    ["update", "test-team", { name: "新名称", executionMode: "auto", maxConcurrency: 8 }],
+    ["add-member", "test-team", "test-role-creator"],
+    ["remove-member", "test-team", "test-role-worker"],
+    ["set-manager", "test-team", "test-role-creator"]
+  ]);
+});
+
+test("teams delete 强制显式 confirm 且只调用 deleteTeam", async () => {
+  const calls = [];
+  const { runCli } = loadCliWithMocks({ teams: createTeamCliMocks(calls) });
+  await assert.rejects(
+    () => runCli(["teams", "delete", "test-team"]),
+    /必须提供 --confirm/
+  );
+  const { output } = await captureConsole(() => (
+    runCli(["teams", "delete", "test-team", "--confirm"])
+  ));
+  assert.deepEqual(calls, [["delete", "test-team"]]);
+  assert.match(output, /只删除 Team State|未修改任何 Agent Instance/);
+});
+
+test("teams 参数缺失、未知选项和未知子命令返回中文错误", async () => {
+  const { runCli } = loadCliWithMocks();
+  await assert.rejects(() => runCli(["teams", "inspect"]), /需要 1 个参数/);
+  await assert.rejects(
+    () => runCli(["teams", "create", "test-team", "--name", "测试"]),
+    /需要提供 --manager/
+  );
+  await assert.rejects(
+    () => runCli([
+      "teams", "create", "test-team", "--name", "测试",
+      "--manager", "test-role-manager", "--member", "test-role-worker"
+    ]),
+    /--manager 必须同时通过 --member/
+  );
+  await assert.rejects(
+    () => runCli(["teams", "update", "test-team", "--member", "test-role-worker"]),
+    /未知或不支持的 teams 选项/
+  );
+  await assert.rejects(() => runCli(["teams", "execute", "test-team"]), /未知 teams 子命令/);
 });
