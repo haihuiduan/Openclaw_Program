@@ -250,6 +250,14 @@ node bin/cli.js instances list
 node bin/cli.js instances inspect <instance-id>
 node bin/cli.js instances register <role-id> <role-agent-id>
 node bin/cli.js instances reconcile
+node bin/cli.js teams list
+node bin/cli.js teams inspect <team-id>
+node bin/cli.js teams create <team-id> --name <name> --manager <instance-id> --member <instance-id>
+node bin/cli.js teams update <team-id> [--name <name>] [--description <text>] [--execution-mode confirm|auto] [--max-concurrency 1-32]
+node bin/cli.js teams add-member <team-id> <instance-id>
+node bin/cli.js teams remove-member <team-id> <instance-id>
+node bin/cli.js teams set-manager <team-id> <instance-id>
+node bin/cli.js teams delete <team-id> --confirm
 node bin/cli.js help
 node bin/cli.js version
 ```
@@ -265,6 +273,10 @@ openclaw-installer setup
 Agent Instance 首版只负责注册、查询和漂移核对。由于 OpenClaw 当前没有安全的原生
 enable/disable，本工具不会用 `agents delete`、`unbind` 或直接修改 `openclaw.json`
 来模拟停用，也不会自动删除未由 ToolBox 管理的 OpenClaw Agent。
+
+Team Builder 首版只保存 Team 与 Agent Instance ID 的映射，不复制 Role、workspace、
+agentDir 或 OpenClaw 配置。Team 的 `ready`、`degraded`、`invalid` 健康状态由当前
+Instance State 动态计算；本阶段不执行任务、不调用 OpenClaw，也不包含 Team Builder GUI。
 
 `npm link` 是开发阶段的本地链接方式，不代表已经发布到 npm。
 
@@ -287,6 +299,18 @@ enable/disable，本工具不会用 `agents delete`、`unbind` 或直接修改 `
 | `openclaw-installer roles install <role-id>` | 将角色的 Agent 文件安装到独立 workspace |
 | `openclaw-installer roles list-installed` | 列出本工具安装并记录的角色 |
 | `openclaw-installer roles remove <role-id>` | 安全移除未启用且未被用户修改的角色 workspace |
+| `openclaw-installer instances list` | 列出 ToolBox 管理的 Agent Instance |
+| `openclaw-installer instances inspect <instance-id>` | 查看本地 Agent Instance 状态 |
+| `openclaw-installer instances register <role-id> <role-agent-id>` | 注册已安装 Role Agent |
+| `openclaw-installer instances reconcile` | 核对 OpenClaw 注册状态与配置漂移 |
+| `openclaw-installer teams list` | 列出 Team 及其动态健康状态 |
+| `openclaw-installer teams inspect <team-id>` | 查看 Team、成员、Manager 与健康问题 |
+| `openclaw-installer teams create <team-id> ...` | 用 registered Agent Instance 创建 Team |
+| `openclaw-installer teams update <team-id> ...` | 更新 Team 名称、描述、执行模式或并发上限 |
+| `openclaw-installer teams add-member <team-id> <instance-id>` | 添加 registered Instance 成员 |
+| `openclaw-installer teams remove-member <team-id> <instance-id>` | 移除非 Manager 成员 |
+| `openclaw-installer teams set-manager <team-id> <instance-id>` | 指定已在 Team 中的 registered 成员为 Manager |
+| `openclaw-installer teams delete <team-id> --confirm` | 只删除 Team State，不删除 Instance 或 workspace |
 | `openclaw-installer help` | 查看帮助信息 |
 | `openclaw-installer version` | 查看当前安装助手版本 |
 

@@ -28,6 +28,14 @@ function printHelp() {
   openclaw-installer instances inspect <id> 查看 Agent Instance 详情
   openclaw-installer instances register <role-id> <agent-id> 注册 Role Agent
   openclaw-installer instances reconcile 核对 OpenClaw 注册状态与配置漂移
+  openclaw-installer teams list         列出 ToolBox 管理的 Team
+  openclaw-installer teams inspect <id> 查看 Team、成员与健康状态
+  openclaw-installer teams create <id> --name <名称> --manager <instance-id> --member <instance-id>
+  openclaw-installer teams update <id> [--name <名称>] [--description <描述>] [--execution-mode confirm|auto] [--max-concurrency 1-32]
+  openclaw-installer teams add-member <id> <instance-id> 添加成员
+  openclaw-installer teams remove-member <id> <instance-id> 移除非 Manager 成员
+  openclaw-installer teams set-manager <id> <instance-id> 指定已有成员为 Manager
+  openclaw-installer teams delete <id> --confirm 只删除 Team State
   openclaw-installer help                查看帮助信息
   openclaw-installer version             查看当前安装助手版本
 
