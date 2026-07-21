@@ -12,6 +12,10 @@ const {
   readTeamState,
   updateTeamState
 } = require("./state");
+const {
+  listProjectStates,
+  readProjectState
+} = require("../projects/state");
 
 const DEFAULT_TEAM_DATA_DIRECTORY = path.join(os.homedir(), ".openclaw-installer", "teams");
 const DEFAULT_TEAM_STATE_PATH = path.join(DEFAULT_TEAM_DATA_DIRECTORY, "state.json");
@@ -200,6 +204,17 @@ async function deleteTeam(teamId, options = {}) {
 
   return withTeamLock(teamId, async () => {
     const settings = resolveSettings(options);
+    const projectState = await settings.projectStateStore.readProjectState(
+      settings.projectStatePath
+    );
+    const references = listProjectStates(projectState)
+      .filter((project) => project.teamId === teamId)
+      .map((project) => project.projectId);
+    if (references.length) {
+      throw new Error(
+        `Team 仍被以下 Project 引用，暂时不能删除：${references.join(", ")}`
+      );
+    }
     await settings.teamStateStore.updateTeamState(settings.teamStatePath, (state) => {
       requireTeam(state, teamId);
       delete state.teams[teamId];
@@ -279,9 +294,16 @@ function requireTeam(state, teamId) {
 
 function resolveSettings(options) {
   const dataDirectory = path.resolve(options.dataDirectory || DEFAULT_TEAM_DATA_DIRECTORY);
+  const teamStatePath = path.resolve(options.teamStatePath || path.join(dataDirectory, "state.json"));
+  const teamDirectory = path.dirname(teamStatePath);
+  const stateRoot = path.basename(teamDirectory) === "teams"
+    ? path.dirname(teamDirectory)
+    : teamDirectory;
+  const derivedProjectStatePath = path.join(stateRoot, "projects", "state.json");
   return {
-    teamStatePath: path.resolve(options.teamStatePath || path.join(dataDirectory, "state.json")),
+    teamStatePath,
     instanceStatePath: path.resolve(options.instanceStatePath || DEFAULT_INSTANCE_STATE_PATH),
+    projectStatePath: path.resolve(options.projectStatePath || derivedProjectStatePath),
     now: options.now || (() => new Date()),
     teamStateStore: options.teamStateStore || {
       readTeamState,
@@ -289,6 +311,9 @@ function resolveSettings(options) {
     },
     instanceStateStore: options.instanceStateStore || {
       readInstanceState
+    },
+    projectStateStore: options.projectStateStore || {
+      readProjectState
     }
   };
 }
