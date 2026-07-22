@@ -96,6 +96,24 @@ const {
   getReadyTaskCandidates,
   validateTaskDependencies
 } = require("./core/tasks/dependencies");
+const {
+  inspectExecution,
+  listExecutions,
+  reconcileExecutions,
+  retryExecution,
+  runTask
+} = require("./core/executions/manager");
+const {
+  createEmptyExecutionState,
+  getRunState,
+  listActiveRuns,
+  listRunStates,
+  readExecutionState,
+  updateExecutionState,
+  writeExecutionState
+} = require("./core/executions/state");
+const { createOpenClawExecutionAdapter } = require("./core/executions/openClawExecutionAdapter");
+const { buildTaskExecutionPrompt } = require("./core/executions/promptBuilder");
 
 module.exports = {
   buildInstallPlan,
@@ -181,5 +199,19 @@ module.exports = {
   calculateTaskBlocking,
   detectDependencyCycle,
   getReadyTaskCandidates,
-  validateTaskDependencies
+  validateTaskDependencies,
+  buildTaskExecutionPrompt,
+  createOpenClawExecutionAdapter,
+  createEmptyExecutionState,
+  getRunState,
+  inspectExecution,
+  listActiveRuns,
+  listExecutions,
+  listRunStates,
+  readExecutionState,
+  reconcileExecutions,
+  retryExecution,
+  runTask,
+  updateExecutionState,
+  writeExecutionState
 };

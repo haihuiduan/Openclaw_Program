@@ -279,6 +279,11 @@ node bin/cli.js tasks add-dependency <task-id> <dependency-task-id>
 node bin/cli.js tasks remove-dependency <task-id> <dependency-task-id>
 node bin/cli.js tasks complete <task-id>
 node bin/cli.js tasks cancel <task-id>
+node bin/cli.js executions list
+node bin/cli.js executions inspect <run-id>
+node bin/cli.js executions run-task <task-id> --confirm
+node bin/cli.js executions retry <run-id> --confirm
+node bin/cli.js executions reconcile
 node bin/cli.js help
 node bin/cli.js version
 ```
@@ -298,6 +303,12 @@ enable/disable，本工具不会用 `agents delete`、`unbind` 或直接修改 `
 Team Builder 首版只保存 Team 与 Agent Instance ID 的映射，不复制 Role、workspace、
 agentDir 或 OpenClaw 配置。Team 的 `ready`、`degraded`、`invalid` 健康状态由当前
 Instance State 动态计算；本阶段不执行任务、不调用 OpenClaw，也不包含 Team Builder GUI。
+
+Task Execution 首版采用前台全局串行执行。`executionMode=auto` 只保存未来策略，
+仍需显式运行 `executions run-task --confirm`；当前不支持安全远端 cancel、pause、
+后台调度、Manager 自动拆分、Agent-to-Agent 调用或 checkpoint 恢复。Execution 默认
+只保存安全摘要，不保存完整 Prompt、stdout、stderr、API Key、token、secret、
+workspacePath 或 agentDir。
 
 Project / Task Core 首版把 Project 绑定到创建时的 Team 安全快照；Team 后续变化不会自动
 改写已有 Project，用户只能在预览差异后显式同步。Task 只支持 pending、completed、

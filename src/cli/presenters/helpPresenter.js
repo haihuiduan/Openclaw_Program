@@ -57,6 +57,12 @@ function printHelp() {
   openclaw-installer tasks remove-dependency <id> <dependency-id> 移除依赖
   openclaw-installer tasks complete <id> 标记完成（不会执行 Agent）
   openclaw-installer tasks cancel <id> 标记取消
+  openclaw-installer executions list [--task <id>] [--project <id>] [--status <status>]
+  openclaw-installer executions inspect <run-id> 查看一次 Execution Run
+  openclaw-installer executions run-task <task-id> --confirm 前台执行已分配 Task
+  openclaw-installer executions retry <run-id> --confirm 显式创建新的重试 Run
+  openclaw-installer executions reconcile 标记遗留 Run 并补做 Task 同步
+  Phase 6 首版不支持安全远端 cancel、pause、后台调度或 checkpoint 恢复
   openclaw-installer help                查看帮助信息
   openclaw-installer version             查看当前安装助手版本
 
