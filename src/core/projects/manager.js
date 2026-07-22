@@ -1,5 +1,10 @@
 const path = require("node:path");
 const { readInstanceState } = require("../agent-instances/state");
+const {
+  ACTIVE_RUN_STATUSES,
+  listRunStates,
+  readExecutionState
+} = require("../executions/state");
 const { getTeamState, readTeamState } = require("../teams/state");
 const { assertTeamId } = require("../teams/id");
 const { listTaskStates, readTaskState } = require("../tasks/state");
@@ -122,7 +127,11 @@ async function completeProject(projectId, options = {}) {
   assertProjectId(projectId);
   return withProjectLock(projectId, async () => {
     const settings = resolveSettings(options);
-    const taskState = await settings.taskStateStore.readTaskState(settings.taskStatePath);
+    const [taskState, executionState] = await Promise.all([
+      settings.taskStateStore.readTaskState(settings.taskStatePath),
+      settings.executionStateStore.readExecutionState(settings.executionStatePath)
+    ]);
+    assertNoActiveRunForProject(projectId, executionState, "完成");
     const pending = listTaskStates(taskState).filter((task) => (
       task.projectId === projectId && task.status === "pending"
     ));
@@ -147,7 +156,11 @@ async function completeProject(projectId, options = {}) {
 }
 
 async function archiveProject(projectId, options = {}) {
-  return mutateProject(projectId, options, (project, settings) => {
+  return mutateProject(projectId, options, async (project, settings) => {
+    const executionState = await settings.executionStateStore.readExecutionState(
+      settings.executionStatePath
+    );
+    assertNoActiveRunForProject(projectId, executionState, "归档");
     if (project.archivedAt) throw new Error("Project 已归档：" + project.projectId);
     const timestamp = settings.now().toISOString();
     project.archivedAt = timestamp;
@@ -184,14 +197,16 @@ async function syncProjectTeam(projectId, input = {}, options = {}) {
   if (!input.confirm) throw new Error("同步 Team 配置必须显式确认。");
   return withProjectLock(projectId, async () => {
     const settings = resolveSettings(options);
-    const [projectState, teamState, instanceState] = await Promise.all([
+    const [projectState, teamState, instanceState, executionState] = await Promise.all([
       settings.projectStateStore.readProjectState(settings.projectStatePath),
       settings.teamStateStore.readTeamState(settings.teamStatePath),
-      settings.instanceStateStore.readInstanceState(settings.instanceStatePath)
+      settings.instanceStateStore.readInstanceState(settings.instanceStatePath),
+      settings.executionStateStore.readExecutionState(settings.executionStatePath)
     ]);
     const existing = getProjectState(projectState, projectId);
     if (!existing) throw new Error("未找到 Project：" + projectId);
     assertProjectWritable(existing);
+    assertNoActiveRunForProject(projectId, executionState, "同步 Team 快照");
     const team = getTeamState(teamState, existing.teamId);
     if (!team) throw new Error("来源 Team 不存在，不能同步：" + existing.teamId);
     const health = require("../teams/health").assessTeamHealth(team, instanceState).health;
@@ -234,9 +249,9 @@ async function mutateProject(projectId, options, mutation) {
   assertProjectId(projectId);
   return withProjectLock(projectId, async () => {
     const settings = resolveSettings(options);
-    const updated = await settings.projectStateStore.updateProjectState(settings.projectStatePath, (state) => {
+    const updated = await settings.projectStateStore.updateProjectState(settings.projectStatePath, async (state) => {
       const project = requireProject(state, projectId);
-      mutation(project, settings);
+      await mutation(project, settings);
       return state;
     });
     return enrichCurrent(getProjectState(updated, projectId), settings);
@@ -309,17 +324,35 @@ function requireProject(state, projectId) {
   if (!project) throw new Error("未找到 Project：" + projectId);
   return project;
 }
+
+function assertNoActiveRunForProject(projectId, executionState, action) {
+  const active = listRunStates(executionState).find((run) => (
+    run.projectId === projectId && ACTIVE_RUN_STATUSES.has(run.status)
+  ));
+  if (active) {
+    throw new Error(`Project 存在 active Execution Run，暂时不能${action}：${active.runId}`);
+  }
+}
 function resolveSettings(options = {}) {
+  const projectStatePath = path.resolve(options.projectStatePath || DEFAULT_PROJECT_STATE_PATH);
+  const projectDirectory = path.dirname(projectStatePath);
+  const stateRoot = path.basename(projectDirectory) === "projects"
+    ? path.dirname(projectDirectory)
+    : projectDirectory;
   return {
-    projectStatePath: path.resolve(options.projectStatePath || DEFAULT_PROJECT_STATE_PATH),
+    projectStatePath,
     teamStatePath: path.resolve(options.teamStatePath || DEFAULT_TEAM_STATE_PATH),
     instanceStatePath: path.resolve(options.instanceStatePath || DEFAULT_INSTANCE_STATE_PATH),
     taskStatePath: path.resolve(options.taskStatePath || DEFAULT_TASK_STATE_PATH),
+    executionStatePath: path.resolve(
+      options.executionStatePath || path.join(stateRoot, "executions", "state.json")
+    ),
     now: options.now || (() => new Date()),
     projectStateStore: options.projectStateStore || { readProjectState, updateProjectState },
     teamStateStore: options.teamStateStore || { readTeamState },
     instanceStateStore: options.instanceStateStore || { readInstanceState },
-    taskStateStore: options.taskStateStore || { readTaskState }
+    taskStateStore: options.taskStateStore || { readTaskState },
+    executionStateStore: options.executionStateStore || { readExecutionState }
   };
 }
 

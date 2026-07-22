@@ -10,7 +10,9 @@ function formatTaskInspect(task) {
     `状态：${task.status}`, `计算状态：${task.computedStatus}`, `来源：${task.source}`,
     `优先级：${task.priority}`, `分配：${task.assignedInstanceId || "未分配"}`,
     `依赖：${task.dependencies.join(", ") || "无"}`, `关键任务：${task.critical ? "是" : "否"}`,
-    "说明：Phase 5 只管理定义与状态，不执行 Agent 或 Task。"
+    `Execution 状态：${task.executionStatus || "尚未执行"}`,
+    `当前 Run：${task.currentRunId || "无"}`, `最近 Run：${task.lastRunId || "无"}`,
+    `执行次数：${task.attemptCount || 0}`
   ].join("\n");
 }
 function formatTaskMutation(task, action) { return `Task ${action}完成：${task.taskId}（${task.status}）`; }

@@ -60,6 +60,10 @@ function loadCliWithMocks(mocks = {}) {
     mockModule("src/core/tasks/manager.js", mocks.tasks);
   }
 
+  if (mocks.executions) {
+    mockModule("src/core/executions/manager.js", mocks.executions);
+  }
+
   return require(projectPath("src/cli/index.js"));
 }
 
@@ -770,4 +774,113 @@ test("help 包含 Project Task Core 且不暗示 auto 会执行", async () => {
   assert.match(output, /tasks create/);
   assert.match(output, /tasks complete.*不会执行 Agent/);
   assert.doesNotMatch(output, /tasks delete|tasks run|tasks execute/);
+});
+
+function executionCliRecord() {
+  return {
+    runId: "run-00000000-0000-4000-8000-000000000001",
+    taskId: "test-task",
+    projectId: "test-project",
+    assignedInstanceId: "test-role-worker",
+    status: "completed",
+    attempt: 1,
+    trigger: "user",
+    taskSyncStatus: "applied",
+    outputSummary: "完成",
+    errorSummary: null
+  };
+}
+
+function executionCliMocks(calls) {
+  const run = executionCliRecord();
+  return {
+    listExecutions: async (filters) => { calls.push(["list", filters]); return [run]; },
+    inspectExecution: async (runId) => { calls.push(["inspect", runId]); return run; },
+    runTask: async (taskId, input) => {
+      calls.push(["run-task", taskId, input]);
+      return { run, executionMode: "auto", autoSchedulingEnabled: false, retryOfRunId: null };
+    },
+    retryExecution: async (runId, input) => {
+      calls.push(["retry", runId, input]);
+      return { run: { ...run, attempt: 2, trigger: "retry" }, executionMode: "confirm", autoSchedulingEnabled: false, retryOfRunId: runId };
+    },
+    reconcileExecutions: async () => {
+      calls.push(["reconcile"]);
+      return {
+        reconciledAt: "2026-07-21T00:00:00.000Z",
+        interruptedRuns: [],
+        taskSyncResults: [],
+        staleLeaseRemoved: false
+      };
+    }
+  };
+}
+
+test("executions CLI 分发 list、inspect、run-task、retry 和 reconcile", async () => {
+  const calls = [];
+  const { runCli } = loadCliWithMocks({ executions: executionCliMocks(calls) });
+  const listed = await captureConsole(() => runCli([
+    "executions", "list", "--task", "test-task", "--project", "test-project", "--status", "completed"
+  ]));
+  const inspected = await captureConsole(() => runCli([
+    "executions", "inspect", "run-00000000-0000-4000-8000-000000000001"
+  ]));
+  const executed = await captureConsole(() => runCli([
+    "executions", "run-task", "test-task", "--confirm", "--confirm-critical",
+    "--instructions", "仅生成摘要", "--timeout", "7"
+  ]));
+  await captureConsole(() => runCli([
+    "executions", "retry", "run-00000000-0000-4000-8000-000000000001", "--confirm"
+  ]));
+  await captureConsole(() => runCli(["executions", "reconcile"]));
+
+  assert.deepEqual(calls, [
+    ["list", { taskId: "test-task", projectId: "test-project", status: "completed" }],
+    ["inspect", "run-00000000-0000-4000-8000-000000000001"],
+    ["run-task", "test-task", {
+      confirm: true, confirmCritical: true, instructions: "仅生成摘要", timeoutMs: 7000
+    }],
+    ["retry", "run-00000000-0000-4000-8000-000000000001", {
+      confirm: true, confirmCritical: false
+    }],
+    ["reconcile"]
+  ]);
+  assert.match(listed.output, /Execution Runs.*test-task/s);
+  assert.match(inspected.output, /Run ID：run-/);
+  assert.match(executed.output, /auto 策略已保存，但自动调度尚未开放/);
+});
+
+test("executions CLI 强制确认、限制 timeout，并明确拒绝危险或未支持命令", async () => {
+  const { runCli } = loadCliWithMocks();
+  await assert.rejects(() => runCli(["executions", "run-task", "test-task"]), /必须提供 --confirm/);
+  await assert.rejects(() => runCli(["executions", "retry", "run-id"]), /必须提供 --confirm/);
+  await assert.rejects(() => runCli([
+    "executions", "run-task", "test-task", "--confirm", "--timeout", "0"
+  ]), /1 到 3600/);
+  await assert.rejects(() => runCli([
+    "executions", "list", "--unknown", "x"
+  ]), /未知 executions list 选项/);
+  for (const subcommand of ["cancel", "pause", "follow", "background"]) {
+    await assert.rejects(() => runCli(["executions", subcommand]), /当前不支持 cancel、pause、follow 或后台执行/);
+  }
+});
+
+test("executions CLI 参数错误通过统一入口返回非零退出码且不会执行 Agent", () => {
+  const result = spawnSync(process.execPath, [
+    projectPath("bin/cli.js"), "executions", "run-task", "test-task"
+  ], { encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /必须提供 --confirm/);
+  assert.doesNotMatch(result.stderr, /openclaw agent/);
+});
+
+test("help 明确列出 Execution 首版命令和安全边界", async () => {
+  const { runCli } = loadCliWithMocks();
+  const { output } = await captureConsole(() => runCli(["help"]));
+  for (const command of [
+    "executions list", "executions inspect", "executions run-task",
+    "executions retry", "executions reconcile"
+  ]) assert.match(output, new RegExp(command.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(output, /不支持安全远端 cancel、pause、后台调度或 checkpoint 恢复/);
+  assert.doesNotMatch(output, /executions cancel|executions pause|executions follow/);
 });

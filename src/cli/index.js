@@ -75,6 +75,7 @@ const {
 const { parseTeamsCommand } = require("./teamsParser");
 const { parseProjectsCommand } = require("./projectsParser");
 const { parseTasksCommand } = require("./tasksParser");
+const { parseExecutionsCommand } = require("./executionsParser");
 const {
   formatProjectInspect,
   formatProjectList,
@@ -86,6 +87,19 @@ const {
   formatTaskList,
   formatTaskMutation
 } = require("./presenters/tasksPresenter");
+const {
+  formatExecutionInspect,
+  formatExecutionList,
+  formatExecutionReconcile,
+  formatExecutionResult
+} = require("./presenters/executionsPresenter");
+const {
+  inspectExecution,
+  listExecutions,
+  reconcileExecutions,
+  retryExecution,
+  runTask
+} = require("../core/executions/manager");
 
 /**
  * 运行 CLI 命令。
@@ -326,6 +340,32 @@ async function runCli(args) {
       if (parsed.subcommand === "cancel") [task, action] = [await cancelTask(parsed.taskId), "取消"];
       console.log(formatTaskMutation(task, action));
       return task;
+    }
+    case "executions": {
+      const parsed = parseExecutionsCommand(rest);
+      if (parsed.subcommand === "list") {
+        const runs = await listExecutions(parsed.filters);
+        console.log(formatExecutionList(runs));
+        return runs;
+      }
+      if (parsed.subcommand === "inspect") {
+        const run = await inspectExecution(parsed.runId);
+        console.log(formatExecutionInspect(run));
+        return run;
+      }
+      if (parsed.subcommand === "run-task") {
+        const result = await runTask(parsed.taskId, parsed.input);
+        console.log(formatExecutionResult(result, "运行"));
+        return result;
+      }
+      if (parsed.subcommand === "retry") {
+        const result = await retryExecution(parsed.runId, parsed.input);
+        console.log(formatExecutionResult(result, "重试"));
+        return result;
+      }
+      const result = await reconcileExecutions();
+      console.log(formatExecutionReconcile(result));
+      return result;
     }
     case "help":
     case "--help":
