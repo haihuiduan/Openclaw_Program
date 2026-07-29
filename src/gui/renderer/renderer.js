@@ -12,6 +12,9 @@ const appStage = document.querySelector("#appStage");
 const wizardTitle = document.querySelector("#wizardTitle");
 const wizardDescription = wizardTitle && wizardTitle.nextElementSibling;
 const aboutMenu = document.querySelector("#aboutMenu");
+const sidebar = document.querySelector(".sidebar");
+const sidebarToggle = document.querySelector("#sidebarToggle");
+const appStageLabel = document.querySelector("#appStage .sidebar-link-label");
 const sidebarMiniStatus = document.querySelector(".sidebar-mini-status span");
 const sidebarMiniVersion = document.querySelector(".sidebar-mini-status strong");
 const appearanceButton = document.querySelector("#appearanceButton");
@@ -23,6 +26,10 @@ const wizardProgress = document.querySelector("#wizardProgress");
 const wizardCard = document.querySelector("#wizardCard");
 const wizardActions = document.querySelector("#wizardActions");
 const wizardUtilities = document.querySelector("#wizardUtilities");
+let agentChatRequestCounter = 0;
+let agentChatViewCounter = 0;
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "openclaw-toolbox:sidebar-collapsed";
+const initialSidebarPreference = readSidebarPreference();
 
 const steps = [
   { id: "prepare", label: "准备 OpenClaw" },
@@ -67,20 +74,46 @@ const wizardState = {
     installations: {},
     enablements: {}
   },
+  roleMarketplaceTab: "all",
   myRoles: {
     status: "idle",
     roles: [],
     message: ""
   },
+  chatCenter: {
+    status: "idle",
+    conversations: [],
+    message: "",
+    pickerOpen: false,
+    pickerRoleId: null,
+    pickerMode: "single",
+    pickerTitle: ""
+  },
   selectedChatAgent: null,
-  appearanceMode: "system"
+  agentChat: {
+    status: "idle",
+    conversation: null,
+    messages: [],
+    message: "",
+    draft: "",
+    pendingMessage: null,
+    activeRequestId: null,
+    viewId: null,
+    hasMore: false,
+    nextBeforeSequence: null
+  },
+  appearanceMode: "system",
+  sidebarCollapsed: initialSidebarPreference.collapsed,
+  sidebarPreferenceSet: initialSidebarPreference.hasPreference,
+  sidebarAutoCollapsedForChat: false
 };
 
 setupCompactStatusBar();
+setupSidebarCollapse();
 applyAppearanceMode();
 
-if (window.openClawInstaller && appStage) {
-  appStage.textContent = window.openClawInstaller.stage;
+if (window.openClawInstaller && appStage && appStageLabel) {
+  appStageLabel.textContent = window.openClawInstaller.stage;
 }
 
 if (appStage) {
@@ -163,6 +196,56 @@ function renderWizard() {
 
 function syncHomeChromeState() {
   document.body.classList.toggle("is-home-dashboard", wizardState.currentPage === "home" && wizardState.currentStep === 0);
+}
+
+function readSidebarPreference() {
+  try {
+    const value = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+    if (value === "true" || value === "false") {
+      return { hasPreference: true, collapsed: value === "true" };
+    }
+  } catch (error) {
+    // localStorage 不可用时使用内存偏好，不影响其他功能。
+  }
+  return { hasPreference: false, collapsed: false };
+}
+
+function setupSidebarCollapse() {
+  applySidebarCollapsedState();
+  if (!sidebarToggle) return;
+  sidebarToggle.addEventListener("click", () => {
+    wizardState.sidebarCollapsed = !wizardState.sidebarCollapsed;
+    wizardState.sidebarPreferenceSet = true;
+    try {
+      window.localStorage.setItem(
+        SIDEBAR_COLLAPSED_STORAGE_KEY,
+        String(wizardState.sidebarCollapsed)
+      );
+    } catch (error) {
+      // 仅丢失普通 UI 偏好，不影响页面使用。
+    }
+    applySidebarCollapsedState();
+  });
+}
+
+function applySidebarCollapsedState() {
+  document.body.classList.toggle(
+    "sidebar-collapsed",
+    wizardState.sidebarCollapsed === true
+  );
+  if (sidebar) {
+    sidebar.classList.toggle("collapsed", wizardState.sidebarCollapsed === true);
+  }
+  if (sidebarToggle) {
+    const collapsed = wizardState.sidebarCollapsed === true;
+    sidebarToggle.textContent = collapsed ? "›" : "‹";
+    sidebarToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    sidebarToggle.setAttribute(
+      "aria-label",
+      collapsed ? "展开工具箱导航" : "收起工具箱导航"
+    );
+    sidebarToggle.title = collapsed ? "展开工具箱导航" : "收起工具箱导航";
+  }
 }
 
 function toggleAppearanceMenu() {
@@ -372,15 +455,9 @@ function updateWizardHeading() {
     return;
   }
 
-  if (wizardState.currentPage === "my-roles") {
-    wizardTitle.textContent = "我的角色";
-    wizardDescription.textContent = "查看已安装角色和可用的 Agent Instance。";
-    return;
-  }
-
-  if (wizardState.currentPage === "agent-chat") {
-    wizardTitle.textContent = "Agent 聊天";
-    wizardDescription.textContent = "聊天界面已准备好，真实对话能力将在 Conversation Core 合并后接入。";
+  if (wizardState.currentPage === "chat-center") {
+    wizardTitle.textContent = "聊天";
+    wizardDescription.textContent = "选择一个已经准备好的助手开始对话。";
     return;
   }
 
@@ -433,6 +510,14 @@ function renderProgress() {
 function renderCurrentStep() {
   wizardCard.replaceChildren();
   wizardActions.replaceChildren();
+  wizardCard.classList.toggle(
+    "wizard-card-agent-chat",
+    wizardState.currentPage === "chat-center"
+  );
+  wizardCard.classList.toggle(
+    "wizard-card-role-marketplace",
+    wizardState.currentPage === "role-marketplace"
+  );
 
   if (wizardState.currentPage !== "home") {
     renderPage();
@@ -480,13 +565,8 @@ function renderPage() {
     return;
   }
 
-  if (wizardState.currentPage === "my-roles") {
-    renderMyRolesPage();
-    return;
-  }
-
-  if (wizardState.currentPage === "agent-chat") {
-    renderAgentChatPage();
+  if (wizardState.currentPage === "chat-center") {
+    renderChatCenterPage();
     return;
   }
 
@@ -503,24 +583,29 @@ function renderRoleMarketplacePage() {
   const page = document.createElement("div");
   page.className = "toolbox-page-stack role-marketplace-page";
 
-  const header = createCard(
-    "本地角色市场",
-    "这里展示工具箱随应用提供的角色包和本机安装状态。当前支持安全安装；暂不提供卸载或角色定向聊天。"
-  );
-  header.classList.add("toolbox-page-card", "role-marketplace-header");
+  const header = document.createElement("header");
+  header.className = "role-marketplace-page-header";
+  const copy = document.createElement("div");
+  const title = document.createElement("h2");
+  title.textContent = "角色市场";
+  const description = document.createElement("p");
+  description.textContent = "选择角色并安装，准备完成后即可在聊天页面与助手对话。";
+  copy.append(title, description);
 
   const actions = document.createElement("div");
   actions.className = "toolbox-card-actions role-marketplace-actions";
-  const refreshButton = createButton("刷新角色列表", loadMarketplaceRoles, "secondary");
-  refreshButton.disabled = marketplace.status === "loading";
+  const refreshButton = createButton("刷新", refreshRoleMarketplace, "secondary");
+  refreshButton.disabled =
+    marketplace.status === "loading" || wizardState.myRoles.status === "loading";
   actions.appendChild(refreshButton);
-  actions.appendChild(createButton("打开 OpenClaw 控制台", openDashboard, "primary"));
-  header.appendChild(actions);
-  header.appendChild(createNotice(
-    "控制台会在浏览器中打开，需要你自行选择 Agent；这里不是角色定向聊天入口。",
-    "info"
-  ));
-  page.appendChild(header);
+  header.append(copy, actions);
+  page.append(header, createRoleMarketplaceTabs());
+
+  if (wizardState.roleMarketplaceTab === "installed") {
+    appendInstalledRolesContent(page);
+    wizardCard.appendChild(page);
+    return;
+  }
 
   if (marketplace.status === "idle" || marketplace.status === "loading") {
     page.appendChild(createMarketplaceStateCard(
@@ -573,6 +658,45 @@ function renderRoleMarketplacePage() {
   wizardCard.appendChild(page);
 }
 
+function createRoleMarketplaceTabs() {
+  const tabs = document.createElement("div");
+  tabs.className = "role-marketplace-tabs";
+  tabs.setAttribute("role", "tablist");
+  for (const [tabId, label] of [["all", "全部角色"], ["installed", "已安装"]]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "role-marketplace-tab";
+    button.setAttribute("role", "tab");
+    button.setAttribute(
+      "aria-selected",
+      wizardState.roleMarketplaceTab === tabId ? "true" : "false"
+    );
+    button.classList.toggle("active", wizardState.roleMarketplaceTab === tabId);
+    button.textContent = label;
+    button.addEventListener("click", () => setRoleMarketplaceTab(tabId));
+    tabs.appendChild(button);
+  }
+  return tabs;
+}
+
+function setRoleMarketplaceTab(tabId) {
+  wizardState.roleMarketplaceTab = tabId === "installed" ? "installed" : "all";
+  renderRoleMarketplaceIfVisible();
+  if (
+    wizardState.roleMarketplaceTab === "installed" &&
+    wizardState.myRoles.status === "idle"
+  ) {
+    loadMyRoles();
+  }
+}
+
+async function refreshRoleMarketplace() {
+  await loadMarketplaceRoles();
+  if (wizardState.roleMarketplaceTab === "installed") {
+    await loadMyRoles();
+  }
+}
+
 function createMarketplaceStateCard(title, message, state) {
   const card = createCard(title, "");
   card.classList.add("toolbox-page-card", "role-marketplace-state");
@@ -580,44 +704,28 @@ function createMarketplaceStateCard(title, message, state) {
   return card;
 }
 
-function renderMyRolesPage() {
+function appendInstalledRolesContent(page) {
   const myRoles = wizardState.myRoles;
-  const page = document.createElement("div");
-  page.className = "toolbox-page-stack my-roles-page";
-
-  const header = createCard(
-    "我的角色",
-    "这里仅展示已经安装的角色。正常注册的 Agent Instance 可以进入聊天界面预览，但本版本不会发送或保存消息。"
+  const intro = createNotice(
+    "这里展示已经准备好的助手，点击即可开始聊天。",
+    "info"
   );
-  header.classList.add("toolbox-page-card", "my-roles-header");
-
-  const actions = document.createElement("div");
-  actions.className = "toolbox-card-actions my-roles-actions";
-  const refreshButton = createButton("刷新我的角色", loadMyRoles, "secondary");
-  refreshButton.disabled = myRoles.status === "loading";
-  actions.appendChild(refreshButton);
-  actions.appendChild(createButton(
-    "前往角色市场",
-    () => navigateToPage("role-marketplace"),
-    "primary"
-  ));
-  header.appendChild(actions);
-  page.appendChild(header);
+  intro.classList.add("installed-roles-intro");
+  page.appendChild(intro);
 
   if (myRoles.status === "idle" || myRoles.status === "loading") {
     page.appendChild(createMarketplaceStateCard(
-      "正在加载我的角色",
-      "正在读取本机角色安装和 Agent Instance 状态，请稍候。",
+      "正在加载已安装角色",
+      "正在读取角色和助手状态，请稍候。",
       "info"
     ));
-    wizardCard.appendChild(page);
     return;
   }
 
   if (myRoles.status === "error") {
     const errorCard = createMarketplaceStateCard(
-      "我的角色加载失败",
-      myRoles.message || "暂时无法读取我的角色，请稍后重试。",
+      "已安装角色加载失败",
+      myRoles.message || "暂时无法读取已安装角色，请稍后重试。",
       "fail"
     );
     const retryActions = document.createElement("div");
@@ -625,26 +733,24 @@ function renderMyRolesPage() {
     retryActions.appendChild(createButton("重新加载", loadMyRoles, "primary"));
     errorCard.appendChild(retryActions);
     page.appendChild(errorCard);
-    wizardCard.appendChild(page);
     return;
   }
 
   if (myRoles.roles.length === 0) {
     const emptyCard = createMarketplaceStateCard(
       "还没有安装角色",
-      "先到角色市场安装角色，安装完成后会显示在这里。",
+      "切换到“全部角色”，选择一个角色并完成准备。",
       "info"
     );
     const emptyActions = document.createElement("div");
     emptyActions.className = "toolbox-card-actions";
     emptyActions.appendChild(createButton(
-      "前往角色市场",
-      () => navigateToPage("role-marketplace"),
+      "查看全部角色",
+      () => setRoleMarketplaceTab("all"),
       "primary"
     ));
     emptyCard.appendChild(emptyActions);
     page.appendChild(emptyCard);
-    wizardCard.appendChild(page);
     return;
   }
 
@@ -654,7 +760,12 @@ function renderMyRolesPage() {
     grid.appendChild(createMyRoleCard(role));
   }
   page.appendChild(grid);
-  wizardCard.appendChild(page);
+}
+
+function renderMyRolesPage() {
+  wizardState.roleMarketplaceTab = "installed";
+  wizardState.currentPage = "role-marketplace";
+  renderRoleMarketplacePage();
 }
 
 function createMyRoleCard(role) {
@@ -664,17 +775,17 @@ function createMyRoleCard(role) {
 
   if (!enabled) {
     buttons.push({
-      label: "前往角色市场启用",
+      label: "完成准备",
       kind: "primary",
-      handler: () => navigateToPage("role-marketplace")
+      handler: () => setRoleMarketplaceTab("all")
     });
   }
 
   const card = createDashboardCard({
     title: role.name || role.roleId,
-    status: enabled ? "已启用" : needsRepair ? "需要修复" : "尚未启用",
+    status: enabled ? "已准备好" : needsRepair ? "需要修复" : "尚未准备好",
     detail: role.description || "暂无角色简介。",
-    meta: `版本 ${role.version || "未知"} · ${role.instanceCount} 个已注册 Agent Instance`,
+    meta: `版本 ${role.version || "未知"} · ${role.instanceCount} 个助手已准备好`,
     state: enabled ? "pass" : needsRepair ? "warning" : "neutral",
     buttons: buttons.length > 0 ? buttons : undefined
   });
@@ -682,7 +793,7 @@ function createMyRoleCard(role) {
 
   if (role.instances.length === 0) {
     card.appendChild(createNotice(
-      "该角色尚未注册 Agent Instance，请前往角色市场启用。",
+      "该角色的助手尚未准备好，请切换到“全部角色”完成准备。",
       "info"
     ));
     return card;
@@ -706,10 +817,8 @@ function createMyRoleInstance(role, instance) {
   const name = document.createElement("strong");
   name.textContent = instance.name || instance.roleAgentId;
   const description = document.createElement("span");
-  description.textContent = instance.description || "暂无 Agent 简介。";
-  const identity = document.createElement("small");
-  identity.textContent = instance.instanceId;
-  content.append(name, description, identity);
+  description.textContent = instance.description || "暂无助手简介。";
+  content.append(name, description);
 
   const controls = document.createElement("div");
   controls.className = "my-role-instance-controls";
@@ -719,8 +828,8 @@ function createMyRoleInstance(role, instance) {
   controls.appendChild(status);
 
   const chatButton = createButton(
-    instance.available ? "进入聊天" : instance.status === "registered" ? "尚不可聊天" : "需要修复",
-    () => openAgentChat(role, instance),
+    instance.available ? "选择聊天" : "需要修复",
+    () => openChatAssistantPicker(role.roleId),
     instance.available ? "primary" : "secondary"
   );
   chatButton.disabled = instance.available !== true;
@@ -730,85 +839,650 @@ function createMyRoleInstance(role, instance) {
   return item;
 }
 
-function renderAgentChatPage() {
-  const selected = wizardState.selectedChatAgent;
+function renderChatCenterPage() {
   const page = document.createElement("div");
-  page.className = "agent-chat-page";
+  page.className = "chat-center-page";
+  page.classList.toggle(
+    "chat-center-has-selection",
+    Boolean(wizardState.selectedChatAgent)
+  );
+  const sidebar = document.createElement("aside");
+  sidebar.className = "chat-center-sidebar";
+  sidebar.setAttribute("aria-label", "聊天列表");
+
+  const sidebarHeader = document.createElement("div");
+  sidebarHeader.className = "chat-center-sidebar-header";
+  const title = document.createElement("h2");
+  title.textContent = "聊天";
+  const newChatButton = createButton(
+    "＋ 新建聊天",
+    () => openChatAssistantPicker(),
+    "primary"
+  );
+  const refreshButton = createButton(
+    "刷新",
+    () => loadChatConversations(),
+    "secondary"
+  );
+  refreshButton.disabled = wizardState.chatCenter.status === "loading";
+  const headerActions = document.createElement("div");
+  headerActions.className = "chat-center-sidebar-actions";
+  headerActions.append(newChatButton, refreshButton);
+  sidebarHeader.append(title, headerActions);
+  sidebar.appendChild(sidebarHeader);
+  sidebar.appendChild(createChatConversationList());
+
+  const chatPane = document.createElement("section");
+  chatPane.className = "chat-center-main";
+  renderAgentChatPage(chatPane);
+  page.append(sidebar, chatPane);
+  if (wizardState.chatCenter.pickerOpen) {
+    page.appendChild(createChatAssistantPicker());
+  }
+  wizardCard.appendChild(page);
+}
+
+function createChatConversationList() {
+  const state = wizardState.chatCenter;
+  const list = document.createElement("div");
+  list.className = "chat-conversation-list";
+
+  if (state.status === "idle" || state.status === "loading") {
+    list.appendChild(createAgentChatEmpty("正在加载聊天…", "请稍候。"));
+    return list;
+  }
+  if (state.status === "error") {
+    list.appendChild(createAgentChatEmpty(
+      "聊天列表加载失败",
+      state.message || "请稍后重试。"
+    ));
+    const retry = createButton("重新加载", loadChatConversations, "secondary");
+    retry.classList.add("chat-conversation-retry");
+    list.appendChild(retry);
+    return list;
+  }
+  if (state.conversations.length === 0) {
+    list.appendChild(createAgentChatEmpty(
+      "还没有聊天",
+      "点击“新建聊天”，选择一个已安装的助手。"
+    ));
+    return list;
+  }
+
+  for (const conversation of state.conversations) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chat-conversation-item";
+    button.classList.toggle(
+      "active",
+      Boolean(
+        wizardState.agentChat.conversation &&
+        wizardState.agentChat.conversation.conversationId === conversation.conversationId
+      )
+    );
+    const heading = document.createElement("span");
+    heading.className = "chat-conversation-heading";
+    const name = document.createElement("strong");
+    name.textContent = conversation.title || conversation.agentName;
+    const time = document.createElement("time");
+    time.textContent = formatChatListDate(conversation.updatedAt);
+    heading.append(name, time);
+    const role = document.createElement("span");
+    role.className = "chat-conversation-role";
+    role.textContent = `${conversation.agentName} · ${conversation.roleName}`;
+    const preview = document.createElement("span");
+    preview.className = "chat-conversation-preview";
+    preview.textContent = conversation.lastMessagePreview;
+    button.append(heading, role, preview);
+    button.addEventListener("click", () => openListedChatConversation(conversation));
+    list.appendChild(button);
+  }
+  return list;
+}
+
+function renderAgentChatPage(container = wizardCard) {
+  const selected = wizardState.selectedChatAgent;
+  const state = wizardState.agentChat;
+  const page = document.createElement("div");
+  page.className = "agent-chat-page agent-chat-pane";
 
   if (!selected) {
-    const unavailable = createMarketplaceStateCard(
-      "未选择 Agent",
-      "请返回“我的角色”，选择一个状态正常的 Agent Instance。",
-      "warning"
-    );
-    const actions = document.createElement("div");
-    actions.className = "toolbox-card-actions";
-    actions.appendChild(createButton(
-      "返回我的角色",
-      () => navigateToPage("my-roles"),
-      "primary"
+    const empty = document.createElement("div");
+    empty.className = "chat-center-empty";
+    empty.appendChild(createAgentChatEmpty(
+      "还没有选择聊天。",
+      "点击“新建聊天”，选择一个已准备好的助手。"
     ));
-    unavailable.appendChild(actions);
-    page.appendChild(unavailable);
-    wizardCard.appendChild(page);
+    const actions = document.createElement("div");
+    actions.className = "chat-center-empty-actions";
+    actions.append(
+      createButton("新建单助手聊天", () => openChatAssistantPicker(), "primary"),
+      createButton("前往角色市场", () => navigateToPage("role-marketplace"), "secondary")
+    );
+    const teamButton = createButton("团队协作即将开放", () => {}, "secondary");
+    teamButton.disabled = true;
+    actions.appendChild(teamButton);
+    empty.appendChild(actions);
+    page.appendChild(empty);
+    container.appendChild(page);
     return;
   }
 
   const header = document.createElement("header");
   header.className = "agent-chat-header";
-  const backButton = createButton(
-    "返回我的角色",
-    () => navigateToPage("my-roles"),
-    "secondary"
-  );
-  backButton.classList.add("agent-chat-back");
   const heading = document.createElement("div");
   const title = document.createElement("h3");
   title.textContent = selected.name || selected.roleAgentId;
   const meta = document.createElement("p");
-  meta.textContent = `${selected.roleName} · ${selected.instanceId} · 已注册`;
+  meta.textContent = `${selected.roleName} · 可聊天`;
   heading.append(title, meta);
-  header.append(backButton, heading);
+  const headerActions = document.createElement("div");
+  headerActions.className = "agent-chat-header-actions";
+  const refreshButton = createButton(
+    "刷新消息",
+    refreshAgentChatMessages,
+    "secondary"
+  );
+  refreshButton.disabled =
+    state.status === "loading" ||
+    state.status === "sending" ||
+    !state.conversation;
+  headerActions.appendChild(refreshButton);
+  header.append(heading, headerActions);
 
   const chat = document.createElement("section");
   chat.className = "agent-chat-shell";
   const messages = document.createElement("div");
   messages.className = "agent-chat-messages";
   messages.setAttribute("aria-label", "聊天消息区域");
-  const empty = document.createElement("div");
-  empty.className = "agent-chat-empty";
-  const emptyTitle = document.createElement("strong");
-  emptyTitle.textContent = `准备与 ${selected.name || selected.roleAgentId} 对话`;
-  const emptyDescription = document.createElement("p");
-  emptyDescription.textContent = "真实对话能力正在接入中。本页面不会发送消息，也不会生成或保存聊天历史。";
-  empty.append(emptyTitle, emptyDescription);
-  messages.appendChild(empty);
+  renderAgentChatMessages(messages, selected, state);
 
   const composer = document.createElement("div");
   composer.className = "agent-chat-composer";
   const input = document.createElement("textarea");
   input.className = "agent-chat-input";
   input.rows = 3;
-  input.maxLength = 4000;
-  input.placeholder = "可以输入内容预览界面，但当前不会发送或保存。";
+  input.maxLength = 8000;
+  input.placeholder = "输入消息，Enter 发送，Shift+Enter 换行";
   input.setAttribute("aria-label", "聊天消息输入");
+  input.value = state.draft;
+  input.disabled =
+    state.status === "loading" ||
+    state.status === "sending" ||
+    !state.conversation ||
+    state.conversation.canSend !== true;
+  input.addEventListener("input", () => {
+    wizardState.agentChat.draft = input.value;
+    sendButton.disabled = !canSendAgentChatMessage();
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      if (canSendAgentChatMessage()) {
+        sendAgentChatMessage();
+      }
+    }
+  });
   const sendButton = document.createElement("button");
   sendButton.type = "button";
   sendButton.className = "inline-action-button agent-chat-send";
-  sendButton.textContent = "发送功能接入中";
-  sendButton.disabled = true;
-  sendButton.setAttribute("aria-disabled", "true");
+  sendButton.textContent = state.status === "sending" ? "发送中…" : "发送";
+  sendButton.disabled = !canSendAgentChatMessage();
+  sendButton.addEventListener("click", sendAgentChatMessage);
   composer.append(input, sendButton);
 
   chat.append(messages, composer);
-  page.append(header, createNotice(
-    "真实对话能力正在接入中；当前输入不会发送给 OpenClaw，也不会保存在本机。",
-    "info"
-  ), chat);
-  wizardCard.appendChild(page);
+  page.appendChild(header);
+  if (state.status === "error" && state.message) {
+    const errorNotice = createNotice(state.message, "fail");
+    errorNotice.classList.add("agent-chat-feedback");
+    const errorActions = document.createElement("div");
+    errorActions.className = "toolbox-card-actions";
+    const recoverButton = createButton(
+      state.conversation ? "恢复并刷新" : "重新打开对话",
+      state.conversation ? reconcileAgentChat : loadAgentChat,
+      "secondary"
+    );
+    errorActions.appendChild(recoverButton);
+    errorNotice.appendChild(errorActions);
+    page.appendChild(errorNotice);
+  }
+  page.appendChild(chat);
+  container.appendChild(page);
+  scrollChatToBottom();
+  focusAgentChatInput();
 }
 
-function openAgentChat(role, instance) {
+function renderAgentChatMessages(container, selected, state) {
+  if (state.status === "loading") {
+    container.appendChild(createAgentChatEmpty(
+      "正在打开对话…",
+      "正在读取本机聊天记录。"
+    ));
+    return;
+  }
+
+  if (!state.conversation && state.status === "error") {
+    container.appendChild(createAgentChatEmpty(
+      "暂时无法打开对话",
+      "请检查助手状态后重试。"
+    ));
+    return;
+  }
+
+  if (state.messages.length === 0 && !state.pendingMessage) {
+    container.appendChild(createAgentChatEmpty(
+      `开始与 ${selected.name || selected.roleAgentId} 对话`,
+      "还没有消息。发送第一条消息后，回复会安全保存在本机。"
+    ));
+    if (state.status === "sending") {
+      container.appendChild(createAgentChatReplyStatus());
+    }
+    return;
+  }
+
+  container.classList.add("agent-chat-messages-ready");
+  for (const message of state.messages) {
+    container.appendChild(createAgentChatMessage(message));
+  }
+  if (state.pendingMessage) {
+    container.appendChild(createOptimisticAgentChatMessage(state.pendingMessage));
+  }
+  if (state.status === "sending") {
+    container.appendChild(createAgentChatReplyStatus());
+  }
+}
+
+function createAgentChatEmpty(titleText, descriptionText) {
+  const empty = document.createElement("div");
+  empty.className = "agent-chat-empty";
+  const title = document.createElement("strong");
+  title.textContent = titleText;
+  const description = document.createElement("p");
+  description.textContent = descriptionText;
+  empty.append(title, description);
+  return empty;
+}
+
+function createAgentChatMessage(message) {
+  const item = document.createElement("article");
+  item.className = `agent-chat-message agent-chat-message-${message.role}`;
+  const meta = document.createElement("div");
+  meta.className = "agent-chat-message-meta";
+  const author = document.createElement("strong");
+  author.textContent = message.role === "user" ? "你" : "助手";
+  const timestamp = document.createElement("time");
+  timestamp.textContent = formatMarketplaceDate(message.updatedAt || message.createdAt);
+  meta.append(author, timestamp);
+
+  const body = document.createElement("p");
+  body.className = "agent-chat-message-content";
+  if (message.status === "failed" || message.status === "interrupted") {
+    body.textContent = message.errorSummary || (
+      message.status === "interrupted"
+        ? "本轮对话已中断，远端结果无法确认。"
+        : "本轮对话处理失败。"
+    );
+    item.classList.add("agent-chat-message-error");
+  } else if (message.content) {
+    body.textContent = message.content;
+  } else {
+    body.textContent = message.status === "sending" ? "正在等待助手回复…" : "消息处理中…";
+  }
+
+  item.append(meta, body);
+  return item;
+}
+
+function createOptimisticAgentChatMessage(message) {
+  const item = document.createElement("article");
+  item.className = "agent-chat-message agent-chat-message-user agent-chat-message-temporary";
+  item.dataset.temporaryId = message.temporaryId;
+  if (message.status === "failed") {
+    item.classList.add("agent-chat-message-error");
+  }
+
+  const meta = document.createElement("div");
+  meta.className = "agent-chat-message-meta";
+  const author = document.createElement("strong");
+  author.textContent = "你";
+  const delivery = document.createElement("span");
+  delivery.className = "agent-chat-message-delivery";
+  delivery.textContent = message.status === "failed" ? "发送失败" : "发送中";
+  meta.append(author, delivery);
+
+  const body = document.createElement("p");
+  body.className = "agent-chat-message-content";
+  body.textContent = message.content;
+  item.append(meta, body);
+
+  if (message.status === "failed" && message.canRetry === true) {
+    const retryButton = createButton(
+      "重新发送",
+      () => retryOptimisticAgentChatMessage(message.temporaryId),
+      "secondary"
+    );
+    retryButton.classList.add("agent-chat-retry");
+    item.appendChild(retryButton);
+  }
+
+  return item;
+}
+
+function createAgentChatReplyStatus() {
+  const status = document.createElement("div");
+  status.className = "agent-chat-reply-status";
+  status.setAttribute("role", "status");
+  const label = document.createElement("span");
+  label.textContent = "正在输入";
+  const dots = document.createElement("span");
+  dots.className = "agent-chat-typing-dots";
+  dots.setAttribute("aria-hidden", "true");
+  for (let index = 0; index < 3; index += 1) {
+    dots.appendChild(document.createElement("i"));
+  }
+  status.append(label, dots);
+  return status;
+}
+
+function createChatAssistantPicker() {
+  const overlay = document.createElement("div");
+  overlay.className = "chat-assistant-picker-backdrop";
+  const panel = document.createElement("section");
+  panel.className = "chat-assistant-picker";
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-modal", "true");
+  panel.setAttribute("aria-label", "选择聊天方式");
+
+  const header = document.createElement("div");
+  header.className = "chat-assistant-picker-header";
+  const title = document.createElement("div");
+  const heading = document.createElement("h3");
+  heading.textContent = "选择聊天方式";
+  const description = document.createElement("p");
+  description.textContent = "新任务会创建独立聊天，不会混入以前的对话。";
+  title.append(heading, description);
+  const close = createButton("关闭", closeChatAssistantPicker, "secondary");
+  header.append(title, close);
+  panel.appendChild(header);
+
+  const modeTabs = document.createElement("div");
+  modeTabs.className = "chat-picker-mode-tabs";
+  modeTabs.setAttribute("role", "tablist");
+  for (const [mode, label] of [
+    ["single", "单助手聊天"],
+    ["team", "团队协作 · 即将开放"]
+  ]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chat-picker-mode-tab";
+    button.classList.toggle("active", wizardState.chatCenter.pickerMode === mode);
+    button.setAttribute("role", "tab");
+    button.setAttribute(
+      "aria-selected",
+      wizardState.chatCenter.pickerMode === mode ? "true" : "false"
+    );
+    button.textContent = label;
+    button.addEventListener("click", () => setChatPickerMode(mode));
+    modeTabs.appendChild(button);
+  }
+  panel.appendChild(modeTabs);
+
+  if (wizardState.chatCenter.pickerMode === "team") {
+    const future = document.createElement("div");
+    future.className = "chat-picker-team-future";
+    future.appendChild(createAgentChatEmpty(
+      "团队协作即将开放",
+      "未来可以在这里选择多个助手协作。本版本不会创建团队会话，也不会调用任何团队功能。"
+    ));
+    const disabled = createButton("即将开放", () => {}, "secondary");
+    disabled.disabled = true;
+    future.appendChild(disabled);
+    panel.appendChild(future);
+    overlay.appendChild(panel);
+    return overlay;
+  }
+
+  const titleField = document.createElement("label");
+  titleField.className = "chat-picker-title-field";
+  const titleLabel = document.createElement("span");
+  titleLabel.textContent = "任务名称（选填）";
+  const titleInput = document.createElement("input");
+  titleInput.type = "text";
+  titleInput.maxLength = 100;
+  titleInput.placeholder = "例如：亚马逊便携榨汁杯调研";
+  titleInput.value = wizardState.chatCenter.pickerTitle;
+  titleInput.addEventListener("input", () => {
+    wizardState.chatCenter.pickerTitle = titleInput.value;
+  });
+  titleField.append(titleLabel, titleInput);
+  panel.appendChild(titleField);
+
+  const list = document.createElement("div");
+  list.className = "chat-assistant-picker-list";
+  const roles = wizardState.myRoles.roles.filter((role) => (
+    !wizardState.chatCenter.pickerRoleId ||
+    role.roleId === wizardState.chatCenter.pickerRoleId
+  ));
+  const available = roles.flatMap((role) => role.instances);
+
+  if (wizardState.myRoles.status === "idle" || wizardState.myRoles.status === "loading") {
+    list.appendChild(createAgentChatEmpty("正在加载助手…", "请稍候。"));
+  } else if (wizardState.myRoles.status === "error") {
+    list.appendChild(createAgentChatEmpty(
+      "助手列表加载失败",
+      wizardState.myRoles.message || "请稍后重试。"
+    ));
+  } else if (available.length === 0) {
+    list.appendChild(createAgentChatEmpty(
+      "还没有可聊天的助手",
+      "请先在角色市场完成角色安装和准备。"
+    ));
+  } else {
+    for (const role of roles) {
+      if (!Array.isArray(role.instances) || role.instances.length === 0) continue;
+      const group = document.createElement("section");
+      group.className = "chat-assistant-role-group";
+      const groupTitle = document.createElement("h4");
+      groupTitle.textContent = role.name;
+      group.appendChild(groupTitle);
+
+      for (const instance of role.instances) {
+        const option = document.createElement("div");
+        option.className = "chat-assistant-option";
+        option.classList.toggle("unavailable", instance.available !== true);
+        const copy = document.createElement("div");
+        copy.className = "chat-assistant-option-copy";
+      const name = document.createElement("strong");
+      name.textContent = instance.name || instance.roleAgentId;
+      const roleName = document.createElement("span");
+      roleName.textContent = role.name;
+      const detail = document.createElement("small");
+      detail.textContent = instance.available
+        ? instance.description || "可开始聊天"
+        : "需要修复后才能聊天";
+        copy.append(name, roleName, detail);
+        const actions = document.createElement("div");
+        actions.className = "chat-assistant-option-actions";
+      if (instance.available) {
+          actions.appendChild(createButton(
+            "新建聊天",
+            () => createNewChatForAssistant(role, instance),
+            "primary"
+          ));
+          const recent = findRecentConversationForInstance(instance.instanceId);
+          if (recent) {
+            actions.appendChild(createButton(
+              "继续最近聊天",
+              () => continueRecentChatForAssistant(recent),
+              "secondary"
+            ));
+          }
+        } else {
+          const unavailableButton = createButton("需要修复", () => {}, "secondary");
+          unavailableButton.disabled = true;
+          actions.appendChild(unavailableButton);
+        }
+        option.append(copy, actions);
+        group.appendChild(option);
+      }
+      list.appendChild(group);
+    }
+  }
+  panel.appendChild(list);
+  overlay.appendChild(panel);
+  return overlay;
+}
+
+function openChatAssistantPicker(roleId = null) {
+  wizardState.chatCenter.pickerOpen = true;
+  wizardState.chatCenter.pickerRoleId = roleId;
+  wizardState.chatCenter.pickerMode = "single";
+  wizardState.chatCenter.pickerTitle = "";
+  wizardState.currentPage = "chat-center";
+  renderWizard();
+  if (wizardState.myRoles.status === "idle") {
+    loadMyRoles();
+  }
+  if (wizardState.chatCenter.status === "idle") {
+    loadChatConversations();
+  }
+}
+
+function closeChatAssistantPicker() {
+  wizardState.chatCenter.pickerOpen = false;
+  wizardState.chatCenter.pickerRoleId = null;
+  wizardState.chatCenter.pickerMode = "single";
+  wizardState.chatCenter.pickerTitle = "";
+  renderChatCenterIfVisible();
+}
+
+function startChatFromRole(roleId) {
+  openChatAssistantPicker(roleId);
+}
+
+function setChatPickerMode(mode) {
+  wizardState.chatCenter.pickerMode = mode === "team" ? "team" : "single";
+  renderChatCenterIfVisible();
+}
+
+function findRecentConversationForInstance(instanceId) {
+  return wizardState.chatCenter.conversations.find(
+    (conversation) => conversation.instanceId === instanceId
+  ) || null;
+}
+
+async function createNewChatForAssistant(role, instance) {
+  if (!role || !instance || instance.available !== true) return;
+  const title = wizardState.chatCenter.pickerTitle.trim() ||
+    `与${instance.name || "助手"}的新对话`;
+  closeChatAssistantPicker();
+  await openAgentChat(role, instance, title);
+}
+
+async function continueRecentChatForAssistant(conversation) {
+  if (!conversation) return;
+  closeChatAssistantPicker();
+  await openListedChatConversation(conversation);
+}
+
+async function loadChatConversations(options = {}) {
+  const state = wizardState.chatCenter;
+  if (state.status === "loading") return;
+  if (options.silent !== true) {
+    state.status = "loading";
+    state.message = "";
+    renderChatCenterIfVisible();
+  }
+  try {
+    if (!window.openClawInstaller || !window.openClawInstaller.listChatConversations) {
+      throw new Error("聊天列表接口不可用。");
+    }
+    const result = await window.openClawInstaller.listChatConversations();
+    if (!applyChatConversationsResult(result)) {
+      throw new Error("聊天列表返回格式无效。");
+    }
+  } catch (error) {
+    state.status = "error";
+    state.conversations = [];
+    state.message = "聊天列表暂时无法加载，请稍后重试。";
+  } finally {
+    renderChatCenterIfVisible();
+  }
+}
+
+function applyChatConversationsResult(result) {
+  if (!result || result.ok !== true || !Array.isArray(result.conversations)) {
+    return false;
+  }
+  wizardState.chatCenter.status = "ready";
+  wizardState.chatCenter.conversations = result.conversations;
+  wizardState.chatCenter.message = "";
+  return true;
+}
+
+async function openListedChatConversation(conversation) {
+  if (!conversation || conversation.status !== "active") return;
+  wizardState.selectedChatAgent = {
+    roleId: "",
+    roleName: conversation.roleName,
+    instanceId: conversation.instanceId,
+    roleAgentId: "",
+    name: conversation.agentName,
+    description: "",
+    status: "registered"
+  };
+  wizardState.agentChat = createEmptyAgentChatState(
+    "loading",
+    createAgentChatViewId()
+  );
+  wizardState.agentChat.conversation = {
+    conversationId: conversation.conversationId,
+    canSend: true
+  };
+  renderChatCenterIfVisible();
+  await loadListedChatConversation(conversation);
+}
+
+async function loadListedChatConversation(conversation) {
+  const selected = wizardState.selectedChatAgent;
+  const viewId = wizardState.agentChat.viewId;
+  try {
+    if (!window.openClawInstaller || !window.openClawInstaller.openExistingAgentChat) {
+      throw new Error("打开已有聊天接口不可用。");
+    }
+    const result = await window.openClawInstaller.openExistingAgentChat(
+      conversation.conversationId
+    );
+    if (!isAgentChatViewCurrent(viewId, selected.instanceId, conversation.conversationId)) {
+      return;
+    }
+    if (!applyAgentChatResult(result, "ready")) {
+      throw new Error("消息列表返回格式无效。");
+    }
+    resolveFailedOptimisticMessage(result.messages);
+  } catch (error) {
+    if (isAgentChatViewCurrent(viewId, selected.instanceId)) {
+      wizardState.agentChat.status = "error";
+      wizardState.agentChat.message = "暂时无法打开这段聊天，请稍后重试。";
+    }
+  } finally {
+    renderChatCenterIfVisible();
+  }
+}
+
+function formatChatListDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
+async function openAgentChat(role, instance, title = "") {
   if (
     !role ||
     role.enabled !== true ||
@@ -828,8 +1502,439 @@ function openAgentChat(role, instance) {
     description: instance.description,
     status: instance.status
   };
-  wizardState.currentPage = "agent-chat";
+  wizardState.agentChat = createEmptyAgentChatState(
+    "loading",
+    createAgentChatViewId()
+  );
+  wizardState.chatCenter.pickerOpen = false;
+  wizardState.chatCenter.pickerRoleId = null;
+  wizardState.chatCenter.pickerMode = "single";
+  wizardState.chatCenter.pickerTitle = "";
+  wizardState.currentPage = "chat-center";
   renderWizard();
+  await loadAgentChat(title);
+  await loadChatConversations({ silent: true });
+}
+
+function createEmptyAgentChatState(status = "idle", viewId = null) {
+  return {
+    status,
+    conversation: null,
+    messages: [],
+    message: "",
+    draft: "",
+    pendingMessage: null,
+    activeRequestId: null,
+    viewId,
+    hasMore: false,
+    nextBeforeSequence: null
+  };
+}
+
+async function loadAgentChat(title = "") {
+  const selected = wizardState.selectedChatAgent;
+  const viewId = wizardState.agentChat.viewId;
+  if (!selected || wizardState.agentChat.status === "sending") {
+    return;
+  }
+  wizardState.agentChat.status = "loading";
+  wizardState.agentChat.message = "";
+  renderAgentChatIfVisible();
+
+  try {
+    if (!window.openClawInstaller || !window.openClawInstaller.createNewAgentChat) {
+      throw new Error("新建聊天接口不可用。");
+    }
+    const result = await window.openClawInstaller.createNewAgentChat(
+      selected.instanceId,
+      title || `与${selected.name || "助手"}的新对话`
+    );
+    if (!isAgentChatViewCurrent(viewId, selected.instanceId)) {
+      return;
+    }
+    if (!applyAgentChatResult(result, "ready")) {
+      throw new Error("聊天返回格式无效。");
+    }
+  } catch (error) {
+    if (isAgentChatViewCurrent(viewId, selected.instanceId)) {
+      wizardState.agentChat.status = "error";
+      wizardState.agentChat.message = "暂时无法打开聊天，请稍后重试。";
+    }
+  } finally {
+    renderAgentChatIfVisible();
+  }
+}
+
+async function refreshAgentChatMessages() {
+  const conversation = wizardState.agentChat.conversation;
+  const selected = wizardState.selectedChatAgent;
+  const viewId = wizardState.agentChat.viewId;
+  if (!conversation || wizardState.agentChat.status === "sending") {
+    return;
+  }
+  wizardState.agentChat.status = "loading";
+  wizardState.agentChat.message = "";
+  renderAgentChatIfVisible();
+  try {
+    const result = await window.openClawInstaller.listAgentChatMessages(
+      selected.instanceId,
+      conversation.conversationId,
+      { limit: 50 }
+    );
+    if (
+      !isAgentChatViewCurrent(
+        viewId,
+        selected.instanceId,
+        conversation.conversationId
+      )
+    ) {
+      return;
+    }
+    if (!applyAgentChatResult(result, "ready")) {
+      throw new Error("消息列表返回格式无效。");
+    }
+  } catch (error) {
+    if (isAgentChatViewCurrent(viewId, selected.instanceId)) {
+      wizardState.agentChat.status = "error";
+      wizardState.agentChat.message = "暂时无法刷新消息，请稍后重试。";
+    }
+  } finally {
+    renderAgentChatIfVisible();
+  }
+}
+
+async function reconcileAgentChat() {
+  const conversation = wizardState.agentChat.conversation;
+  const selected = wizardState.selectedChatAgent;
+  const viewId = wizardState.agentChat.viewId;
+  if (!conversation || wizardState.agentChat.status === "sending") {
+    return;
+  }
+  wizardState.agentChat.status = "loading";
+  renderAgentChatIfVisible();
+  try {
+    const result = await window.openClawInstaller.reconcileAgentChat(
+      selected.instanceId,
+      conversation.conversationId
+    );
+    if (
+      !isAgentChatViewCurrent(
+        viewId,
+        selected.instanceId,
+        conversation.conversationId
+      )
+    ) {
+      return;
+    }
+    if (!applyAgentChatResult(result, "ready")) {
+      throw new Error("对话状态恢复失败。");
+    }
+  } catch (error) {
+    if (isAgentChatViewCurrent(viewId, selected.instanceId)) {
+      wizardState.agentChat.status = "error";
+      wizardState.agentChat.message = "对话状态恢复未完成，请稍后重试。";
+    }
+  } finally {
+    renderAgentChatIfVisible();
+  }
+}
+
+async function sendAgentChatMessage() {
+  const state = wizardState.agentChat;
+  const conversation = state.conversation;
+  const selected = wizardState.selectedChatAgent;
+  if (!conversation || !canSendAgentChatMessage()) {
+    return;
+  }
+  const content = state.draft;
+  const viewId = state.viewId;
+  const requestId = createAgentChatRequestId();
+  const temporaryId = `temporary-user-${requestId}`;
+  const baselineSequence = getLatestAgentChatSequence(state.messages);
+  state.draft = "";
+  state.status = "sending";
+  state.message = "";
+  state.activeRequestId = requestId;
+  state.pendingMessage = {
+    temporaryId,
+    role: "user",
+    content,
+    status: "sending",
+    createdAt: new Date().toISOString(),
+    baselineSequence,
+    canRetry: false
+  };
+  renderAgentChatIfVisible();
+  scrollChatToBottom();
+
+  try {
+    const result = await window.openClawInstaller.sendAgentChatMessage(
+      selected.instanceId,
+      conversation.conversationId,
+      content
+    );
+    if (
+      !isAgentChatRequestCurrent(
+        viewId,
+        requestId,
+        selected.instanceId,
+        conversation.conversationId
+      )
+    ) {
+      return;
+    }
+    if (!applyAgentChatResult(result, "ready")) {
+      throw new Error("消息发送未完成。");
+    }
+    wizardState.agentChat.pendingMessage = null;
+    wizardState.agentChat.activeRequestId = null;
+  } catch (error) {
+    await recoverAgentChatAfterSendFailure({
+      selected,
+      conversation,
+      content,
+      viewId,
+      requestId,
+      temporaryId,
+      baselineSequence
+    });
+  } finally {
+    renderAgentChatIfVisible();
+    scrollChatToBottom();
+    loadChatConversations({ silent: true });
+  }
+}
+
+async function recoverAgentChatAfterSendFailure(context) {
+  if (
+    !isAgentChatRequestCurrent(
+      context.viewId,
+      context.requestId,
+      context.selected.instanceId,
+      context.conversation.conversationId
+    )
+  ) {
+    return;
+  }
+
+  let refreshed = null;
+  try {
+    refreshed = await window.openClawInstaller.listAgentChatMessages(
+      context.selected.instanceId,
+      context.conversation.conversationId,
+      { limit: 50 }
+    );
+  } catch (error) {
+    refreshed = null;
+  }
+
+  if (
+    !isAgentChatRequestCurrent(
+      context.viewId,
+      context.requestId,
+      context.selected.instanceId,
+      context.conversation.conversationId
+    )
+  ) {
+    return;
+  }
+
+  const historyConfirmed = Boolean(
+    refreshed &&
+    refreshed.ok === true &&
+    Array.isArray(refreshed.messages)
+  );
+  const persisted = historyConfirmed && hasPersistedAgentChatMessage(
+    refreshed.messages,
+    context.content,
+    context.baselineSequence
+  );
+
+  if (persisted && applyAgentChatResult(refreshed, "ready")) {
+    wizardState.agentChat.pendingMessage = null;
+    wizardState.agentChat.activeRequestId = null;
+    return;
+  }
+
+  if (historyConfirmed) {
+    applyAgentChatResult(refreshed, "error");
+  }
+  wizardState.agentChat.status = "error";
+  wizardState.agentChat.message = historyConfirmed
+    ? "消息未确认发送成功，已恢复输入内容。"
+    : "未能确认发送结果，已恢复输入内容；请先刷新历史再重试。";
+  wizardState.agentChat.draft = context.content;
+  wizardState.agentChat.activeRequestId = null;
+  wizardState.agentChat.pendingMessage = {
+    temporaryId: context.temporaryId,
+    role: "user",
+    content: context.content,
+    status: "failed",
+    createdAt: new Date().toISOString(),
+    baselineSequence: context.baselineSequence,
+    canRetry: historyConfirmed
+  };
+}
+
+function hasPersistedAgentChatMessage(messages, content, baselineSequence) {
+  return messages.some((message) => (
+    message &&
+    message.role === "user" &&
+    Number.isInteger(message.sequence) &&
+    message.sequence > baselineSequence &&
+    message.content === content
+  ));
+}
+
+function resolveFailedOptimisticMessage(messages) {
+  const pending = wizardState.agentChat.pendingMessage;
+  if (!pending || pending.status !== "failed") return;
+  if (hasPersistedAgentChatMessage(messages, pending.content, pending.baselineSequence)) {
+    wizardState.agentChat.pendingMessage = null;
+    if (wizardState.agentChat.draft === pending.content) {
+      wizardState.agentChat.draft = "";
+    }
+    return;
+  }
+  pending.canRetry = true;
+}
+
+function getLatestAgentChatSequence(messages) {
+  return messages.reduce((latest, message) => (
+    Number.isInteger(message && message.sequence)
+      ? Math.max(latest, message.sequence)
+      : latest
+  ), 0);
+}
+
+function retryOptimisticAgentChatMessage(temporaryId) {
+  const state = wizardState.agentChat;
+  if (
+    !state.pendingMessage ||
+    state.pendingMessage.temporaryId !== temporaryId ||
+    state.pendingMessage.status !== "failed" ||
+    state.pendingMessage.canRetry !== true ||
+    state.status === "sending"
+  ) {
+    return;
+  }
+  state.draft = state.pendingMessage.content;
+  state.pendingMessage = null;
+  state.status = "ready";
+  state.message = "";
+  renderAgentChatIfVisible();
+  sendAgentChatMessage();
+}
+
+function createAgentChatRequestId() {
+  agentChatRequestCounter += 1;
+  return String(agentChatRequestCounter);
+}
+
+function createAgentChatViewId() {
+  agentChatViewCounter += 1;
+  return `agent-chat-view-${agentChatViewCounter}`;
+}
+
+function isAgentChatViewCurrent(viewId, instanceId, conversationId = null) {
+  const selected = wizardState.selectedChatAgent;
+  const state = wizardState.agentChat;
+  return Boolean(
+    wizardState.currentPage === "chat-center" &&
+    selected &&
+    selected.instanceId === instanceId &&
+    state.viewId === viewId &&
+    (
+      !conversationId ||
+      (state.conversation && state.conversation.conversationId === conversationId)
+    )
+  );
+}
+
+function isAgentChatRequestCurrent(
+  viewId,
+  requestId,
+  instanceId,
+  conversationId
+) {
+  return Boolean(
+    isAgentChatViewCurrent(viewId, instanceId, conversationId) &&
+    wizardState.agentChat.activeRequestId === requestId
+  );
+}
+
+function scrollChatToBottom() {
+  window.requestAnimationFrame(() => {
+    if (wizardState.currentPage !== "chat-center") {
+      return;
+    }
+    const messages = wizardCard.querySelector(".agent-chat-messages");
+    if (messages) {
+      messages.scrollTop = messages.scrollHeight;
+    }
+  });
+}
+
+function focusAgentChatInput() {
+  window.requestAnimationFrame(() => {
+    if (wizardState.currentPage !== "chat-center") {
+      return;
+    }
+    const input = wizardCard.querySelector(".agent-chat-input:not(:disabled)");
+    if (input) {
+      input.focus();
+    }
+  });
+}
+
+function canSendAgentChatMessage() {
+  const state = wizardState.agentChat;
+  return Boolean(
+    state.status !== "loading" &&
+    state.status !== "sending" &&
+    !state.activeRequestId &&
+    (
+      !state.pendingMessage ||
+      (state.pendingMessage.status === "failed" && state.pendingMessage.canRetry === true)
+    ) &&
+    state.conversation &&
+    state.conversation.canSend === true &&
+    typeof state.draft === "string" &&
+    state.draft.trim()
+  );
+}
+
+function applyAgentChatResult(result, status) {
+  if (
+    !result ||
+    result.ok !== true ||
+    !result.conversation ||
+    !Array.isArray(result.messages)
+  ) {
+    return false;
+  }
+  wizardState.agentChat.status = status;
+  wizardState.agentChat.conversation = result.conversation;
+  wizardState.agentChat.messages = result.messages;
+  wizardState.agentChat.message = "";
+  wizardState.agentChat.hasMore = result.hasMore === true;
+  wizardState.agentChat.nextBeforeSequence =
+    Number.isInteger(result.nextBeforeSequence)
+      ? result.nextBeforeSequence
+      : null;
+  return true;
+}
+
+function renderAgentChatIfVisible() {
+  if (wizardState.currentPage === "chat-center") {
+    renderWizard();
+  }
+}
+
+function renderChatCenterIfVisible() {
+  if (wizardState.currentPage === "chat-center") {
+    renderWizard();
+  }
 }
 
 function createMarketplaceRoleCard(role) {
@@ -849,21 +1954,17 @@ function createMarketplaceRoleCard(role) {
 
   if (!installed) {
     buttons = [{
-      label: installing ? "正在安装…" : "安装角色",
+      label: installing || enabling ? "正在准备助手…" : "安装并启用",
       kind: "primary",
-      pending: installing,
-      disabled: installing,
-      handler: () => installMarketplaceRole(role.id)
+      pending: installing || enabling,
+      disabled: installing || enabling,
+      handler: () => prepareMarketplaceRole(role.id)
     }];
   } else if (enabled) {
     buttons = [{
-      label: "已启用",
-      kind: "secondary",
-      disabled: true
-    }, {
-      label: "角色聊天即将开放",
-      kind: "secondary",
-      disabled: true
+      label: "开始聊天",
+      kind: "primary",
+      handler: () => startChatFromRole(role.id)
     }];
   } else if (role.enablementStatus === "needs-repair") {
     buttons = [{
@@ -873,29 +1974,25 @@ function createMarketplaceRoleCard(role) {
     }];
   } else {
     buttons = [{
-      label: enabling ? "正在启用…" : "启用角色",
+      label: enabling ? "正在准备助手…" : "准备助手",
       kind: "primary",
       pending: enabling,
       disabled: enabling,
       handler: () => enableMarketplaceRole(role.id)
-    }, {
-      label: "角色聊天即将开放",
-      kind: "secondary",
-      disabled: true
     }];
   }
 
   const card = createDashboardCard({
     title: role.name || role.id,
     status: enabled
-      ? "已启用"
+      ? "已准备好"
       : role.enablementStatus === "needs-repair"
         ? "需要修复"
         : installed
-          ? "已安装"
+          ? "待准备助手"
           : "未安装",
     detail: role.description || "暂无角色简介。",
-    meta: `版本 ${role.version || "未知"} · 包含 ${role.agentCount} 个 Agent`,
+    meta: `版本 ${role.version || "未知"} · 包含 ${role.agentCount} 个助手`,
     state: enabled ? "pass" : role.enablementStatus === "needs-repair" ? "warning" : "neutral",
     buttons
   });
@@ -926,7 +2023,7 @@ function createMarketplaceRoleCard(role) {
 
   if (role.enablementStatus === "needs-repair") {
     card.appendChild(createNotice(
-      "Agent Instance 存在缺失或配置漂移，请先通过 instances reconcile 核对并修复。",
+      "部分助手当前不可用，需要修复后才能开始聊天。",
       "warning"
     ));
   }
@@ -934,7 +2031,7 @@ function createMarketplaceRoleCard(role) {
   if (Array.isArray(role.instances) && role.instances.length > 0) {
     const instancesTitle = document.createElement("strong");
     instancesTitle.className = "role-marketplace-members-title";
-    instancesTitle.textContent = "Agent Instances";
+    instancesTitle.textContent = "已准备的助手";
     card.appendChild(instancesTitle);
 
     const instances = document.createElement("ul");
@@ -944,7 +2041,7 @@ function createMarketplaceRoleCard(role) {
       item.className = "role-marketplace-instance";
 
       const identity = document.createElement("strong");
-      identity.textContent = `${instance.name || instance.roleAgentId} · ${instance.instanceId}`;
+      identity.textContent = instance.name || instance.roleAgentId;
       const instanceStatus = document.createElement("span");
       instanceStatus.textContent = getMarketplaceInstanceStatus(instance.status);
 
@@ -980,28 +2077,36 @@ function createMarketplaceRoleCard(role) {
 
 function getMarketplaceRoleStatusText(role) {
   if (!role.installed) {
-    return "尚未安装到本机";
+    return "安装后即可准备助手";
   }
   if (role.enabled) {
-    return `已启用 ${role.instanceCount} 个 Agent Instance`;
+    return `${role.instanceCount} 个助手已准备好`;
   }
   if (role.enablementStatus === "needs-repair") {
-    return "Agent Instance 状态需要修复";
+    return "部分助手需要修复";
   }
   if (role.enablementStatus === "partial") {
-    return `已注册 ${role.instanceCount} 个 Agent Instance，尚未完整启用`;
+    return `${role.instanceCount} 个助手已准备，仍需完成其余助手`;
   }
   return `已安装版本 ${role.installedVersion || role.version || "未知"}${
     role.installedAt ? ` · ${formatMarketplaceDate(role.installedAt)}` : ""
-  } · 尚未启用`;
+  } · 助手尚未准备`;
 }
 
 function getMarketplaceInstanceStatus(status) {
   return {
-    registered: "已注册",
-    missing: "OpenClaw 中缺失",
-    drifted: "配置漂移"
+    registered: "可聊天",
+    missing: "需要修复",
+    drifted: "需要修复"
   }[status] || "状态未知";
+}
+
+async function prepareMarketplaceRole(roleId) {
+  const installResult = await installMarketplaceRole(roleId);
+  if (!installResult || installResult.ok !== true) {
+    return;
+  }
+  await enableMarketplaceRole(roleId);
 }
 
 async function loadMarketplaceRoles() {
@@ -1075,7 +2180,12 @@ function applyMyRolesResult(result) {
 }
 
 function renderMyRolesIfVisible() {
-  if (wizardState.currentPage === "my-roles") {
+  if (
+    (wizardState.currentPage === "role-marketplace" &&
+      wizardState.roleMarketplaceTab === "installed") ||
+    (wizardState.currentPage === "chat-center" &&
+      wizardState.chatCenter.pickerOpen)
+  ) {
     renderWizard();
   }
 }
@@ -1086,7 +2196,7 @@ async function installMarketplaceRole(roleId) {
   const current = marketplace.installations[roleId];
 
   if (!role || role.installed === true || (current && current.status === "installing")) {
-    return;
+    return null;
   }
 
   marketplace.installations[roleId] = {
@@ -1113,7 +2223,7 @@ async function installMarketplaceRole(roleId) {
           "角色安装未完成，请稍后重试。"
         )
       };
-      return;
+      return result;
     }
 
     marketplace.installations[roleId] = {
@@ -1128,12 +2238,15 @@ async function installMarketplaceRole(roleId) {
     if (!installedRole || installedRole.installed !== true) {
       await loadMarketplaceRoles();
     }
+    return result;
   } catch (error) {
     marketplace.installations[roleId] = {
       status: "error",
       message: "角色安装未完成，请稍后重试。"
     };
+    return null;
   } finally {
+    await loadMyRoles();
     renderRoleMarketplaceIfVisible();
   }
 }
@@ -1150,7 +2263,7 @@ async function enableMarketplaceRole(roleId) {
     role.enablementStatus === "needs-repair" ||
     (current && current.status === "enabling")
   ) {
-    return;
+    return null;
   }
 
   marketplace.enablements[roleId] = {
@@ -1177,7 +2290,7 @@ async function enableMarketplaceRole(roleId) {
           "角色启用未完成，请稍后重试。"
         )
       };
-      return;
+      return result;
     }
 
     marketplace.enablements[roleId] = {
@@ -1192,12 +2305,16 @@ async function enableMarketplaceRole(roleId) {
     if (!enabledRole || enabledRole.enabled !== true) {
       await loadMarketplaceRoles();
     }
+    await loadChatConversations({ silent: true });
+    return result;
   } catch (error) {
     marketplace.enablements[roleId] = {
       status: "error",
       message: "角色启用未完成，请稍后重试。"
     };
+    return null;
   } finally {
+    await loadMyRoles();
     renderRoleMarketplaceIfVisible();
   }
 }
@@ -3818,8 +4935,22 @@ function navigateToPage(page, options = {}) {
   }
 
   wizardState.currentPage = page || "home";
-  if (wizardState.currentPage !== "agent-chat") {
+  if (
+    wizardState.currentPage === "chat-center" &&
+    wizardState.sidebarPreferenceSet !== true &&
+    wizardState.sidebarAutoCollapsedForChat !== true
+  ) {
+    wizardState.sidebarCollapsed = true;
+    wizardState.sidebarAutoCollapsedForChat = true;
+    applySidebarCollapsedState();
+  }
+  if (wizardState.currentPage !== "chat-center") {
     wizardState.selectedChatAgent = null;
+    wizardState.agentChat = createEmptyAgentChatState();
+    wizardState.chatCenter.pickerOpen = false;
+    wizardState.chatCenter.pickerRoleId = null;
+    wizardState.chatCenter.pickerMode = "single";
+    wizardState.chatCenter.pickerTitle = "";
   }
 
   if (wizardState.currentPage === "home") {
@@ -3843,10 +4974,20 @@ function navigateToPage(page, options = {}) {
   }
 
   if (
-    wizardState.currentPage === "my-roles" &&
+    wizardState.currentPage === "role-marketplace" &&
+    wizardState.roleMarketplaceTab === "installed" &&
     wizardState.myRoles.status === "idle"
   ) {
     loadMyRoles();
+  }
+
+  if (wizardState.currentPage === "chat-center") {
+    if (wizardState.chatCenter.status === "idle") {
+      loadChatConversations();
+    }
+    if (wizardState.myRoles.status === "idle") {
+      loadMyRoles();
+    }
   }
 }
 
@@ -3874,9 +5015,7 @@ function updateHomeButtonState() {
 }
 
 function updateSidebarState() {
-  const activePage = wizardState.currentPage === "agent-chat"
-    ? "my-roles"
-    : wizardState.currentPage;
+  const activePage = wizardState.currentPage;
   for (const button of sidebarButtons) {
     button.disabled = wizardState.isBusy;
     button.classList.toggle("active", button.dataset.page === activePage);

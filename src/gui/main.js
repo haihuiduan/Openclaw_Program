@@ -2,6 +2,7 @@
 const path = require("node:path");
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const { loadConfig } = require("../config");
+const conversationService = require("./services/conversationService");
 const installerService = require("./services/installerService");
 const roleService = require("./services/roleService");
 const { getProviderApiKeyGuidance } = require("./providerApiKeyGuidance");
@@ -170,6 +171,125 @@ ipcMain.handle("role-marketplace:enable", async (event, roleId) => {
   }
 });
 
+ipcMain.handle("chat-center:list", async () => {
+  try {
+    return await conversationService.listChatConversations();
+  } catch (error) {
+    return {
+      ok: false,
+      conversations: [],
+      message: "聊天列表暂时无法加载，请稍后重试。"
+    };
+  }
+});
+
+ipcMain.handle("agent-chat:create", async (event, instanceId, title) => {
+  if (
+    typeof instanceId !== "string" ||
+    !instanceId.trim() ||
+    (title !== undefined && typeof title !== "string")
+  ) {
+    return safeAgentChatError("新聊天参数无效。");
+  }
+  try {
+    return await conversationService.createNewAgentConversation(
+      instanceId.trim(),
+      title
+    );
+  } catch (error) {
+    return safeAgentChatError("新聊天创建未完成，请稍后重试。");
+  }
+});
+
+ipcMain.handle("agent-chat:open-existing", async (event, conversationId) => {
+  if (typeof conversationId !== "string" || !conversationId.trim()) {
+    return safeAgentChatError("聊天标识无效。");
+  }
+  try {
+    return await conversationService.openChatConversation(
+      conversationId.trim()
+    );
+  } catch (error) {
+    return safeAgentChatError("暂时无法打开这段聊天，请稍后重试。");
+  }
+});
+
+ipcMain.handle("agent-chat:messages", async (
+  event,
+  instanceId,
+  conversationId,
+  pagination
+) => {
+  if (
+    typeof instanceId !== "string" ||
+    !instanceId.trim() ||
+    typeof conversationId !== "string" ||
+    !conversationId.trim()
+  ) {
+    return safeAgentChatError("Conversation 标识无效。");
+  }
+  if (
+    pagination !== undefined &&
+    (!pagination || typeof pagination !== "object" || Array.isArray(pagination))
+  ) {
+    return safeAgentChatError("消息分页参数无效。");
+  }
+  try {
+    return await conversationService.listConversationMessages(
+      instanceId.trim(),
+      conversationId.trim(),
+      pagination || {}
+    );
+  } catch (error) {
+    return safeAgentChatError("暂时无法读取对话消息，请稍后重试。");
+  }
+});
+
+ipcMain.handle("agent-chat:send", async (
+  event,
+  instanceId,
+  conversationId,
+  content
+) => {
+  if (
+    typeof instanceId !== "string" ||
+    !instanceId.trim() ||
+    typeof conversationId !== "string" ||
+    !conversationId.trim() ||
+    typeof content !== "string"
+  ) {
+    return safeAgentChatError("消息发送参数无效。");
+  }
+  try {
+    return await conversationService.sendConversationMessage(
+      instanceId.trim(),
+      conversationId.trim(),
+      content
+    );
+  } catch (error) {
+    return safeAgentChatError("消息发送未完成，请稍后重试。");
+  }
+});
+
+ipcMain.handle("agent-chat:reconcile", async (event, instanceId, conversationId) => {
+  if (
+    typeof instanceId !== "string" ||
+    !instanceId.trim() ||
+    typeof conversationId !== "string" ||
+    !conversationId.trim()
+  ) {
+    return safeAgentChatError("Conversation 标识无效。");
+  }
+  try {
+    return await conversationService.reconcileAgentConversation(
+      instanceId.trim(),
+      conversationId.trim()
+    );
+  } catch (error) {
+    return safeAgentChatError("对话状态恢复未完成，请稍后重试。");
+  }
+});
+
 ipcMain.handle("external:open", async (event, url) => {
   const allowedUrls = new Set([
     "https://nodejs.org/zh-cn/download"
@@ -243,6 +363,17 @@ function sendProgress(channel, stepUpdate) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, stepUpdate);
   }
+}
+
+function safeAgentChatError(message) {
+  return {
+    ok: false,
+    conversation: null,
+    messages: [],
+    hasMore: false,
+    nextBeforeSequence: null,
+    message
+  };
 }
 
 app.whenReady().then(() => {

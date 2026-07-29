@@ -1875,6 +1875,12 @@ body[data-theme="dark"] .role-marketplace-instance {
   }
 }
 
+@media (max-width: 960px) {
+  .chat-center-page {
+    grid-template-columns: 215px minmax(0, 1fr);
+  }
+}
+
 .my-roles-header {
   display: grid;
   gap: 14px;
@@ -1957,20 +1963,251 @@ body[data-theme="dark"] .role-marketplace-instance {
   color: #8b5619;
 }
 
-.agent-chat-page {
+.role-marketplace-tabs {
+  display: inline-flex;
+  gap: 4px;
+  margin-top: 14px;
+  border-radius: 9px;
+  padding: 4px;
+  background: rgba(91, 101, 118, 0.09);
+}
+
+.role-marketplace-tab {
+  min-height: 34px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 16px;
+  color: var(--panel-muted);
+  background: transparent;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.role-marketplace-tab.active {
+  color: var(--panel-ink);
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(38, 43, 52, 0.08);
+}
+
+.installed-roles-intro {
+  margin: 0;
+}
+
+.wizard-panel:has(.wizard-card-agent-chat) {
+  overflow: hidden;
+  padding: 0;
+}
+
+.wizard-panel:has(.wizard-card-agent-chat) > .section-heading,
+.wizard-panel:has(.wizard-card-agent-chat) > .wizard-progress,
+.wizard-panel:has(.wizard-card-agent-chat) > .wizard-actions,
+.wizard-panel:has(.wizard-card-agent-chat) > .wizard-utilities {
+  display: none;
+}
+
+.chat-center-page {
+  position: relative;
   display: grid;
-  gap: 14px;
-  min-height: min(560px, calc(100vh - 220px));
+  grid-template-columns: 270px minmax(0, 1fr);
+  min-height: 620px;
+  height: calc(100vh - 126px);
+  max-height: 840px;
+  overflow: hidden;
+}
+
+.chat-center-sidebar {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--panel-border);
+  background: rgba(245, 247, 250, 0.86);
+}
+
+.chat-center-sidebar-header {
+  display: grid;
+  gap: 10px;
+  border-bottom: 1px solid var(--panel-border);
+  padding: 16px;
+}
+
+.chat-center-sidebar-header h2 {
+  margin: 0;
+  color: var(--panel-ink);
+  font-size: 20px;
+}
+
+.chat-conversation-list {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.chat-conversation-list .agent-chat-empty {
+  margin: auto;
+  padding: 18px;
+}
+
+.chat-conversation-retry {
+  align-self: center;
+  margin-bottom: 16px;
+}
+
+.chat-conversation-item {
+  display: grid;
+  gap: 5px;
+  border: 0;
+  border-bottom: 1px solid var(--panel-border);
+  padding: 13px 15px;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-conversation-item:hover,
+.chat-conversation-item.active {
+  background: rgba(79, 116, 200, 0.11);
+}
+
+.chat-conversation-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-conversation-heading strong {
+  overflow: hidden;
+  color: var(--panel-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-conversation-heading time,
+.chat-conversation-role,
+.chat-conversation-preview {
+  color: var(--panel-muted);
+  font-size: 11px;
+}
+
+.chat-conversation-role,
+.chat-conversation-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-center-main {
+  min-width: 0;
+  min-height: 0;
+  background: rgba(255, 253, 248, 0.72);
+}
+
+.chat-center-empty {
+  display: grid;
+  margin: auto;
+  place-items: center;
+  gap: 16px;
+}
+
+.chat-assistant-picker-backdrop {
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(18, 24, 34, 0.42);
+}
+
+.chat-assistant-picker {
+  display: flex;
+  width: min(560px, 100%);
+  max-height: min(640px, calc(100% - 32px));
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(18, 24, 34, 0.24);
+}
+
+.chat-assistant-picker-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--panel-border);
+  padding: 18px;
+}
+
+.chat-assistant-picker-header h3,
+.chat-assistant-picker-header p {
+  margin: 0;
+}
+
+.chat-assistant-picker-header p {
+  margin-top: 4px;
+  color: var(--panel-muted);
+}
+
+.chat-assistant-picker-list {
+  display: grid;
+  gap: 8px;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.chat-assistant-option {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 12px;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-assistant-option:hover:not(:disabled) {
+  border-color: rgba(79, 116, 200, 0.55);
+  background: rgba(79, 116, 200, 0.08);
+}
+
+.chat-assistant-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.chat-assistant-option strong {
+  color: var(--panel-ink);
+}
+
+.chat-assistant-option span,
+.chat-assistant-option small {
+  color: var(--panel-muted);
+}
+
+.agent-chat-page {
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+}
+
+.wizard-card-agent-chat {
+  margin-bottom: 0;
 }
 
 .agent-chat-header {
   display: flex;
   align-items: center;
   gap: 14px;
-  border: 1px solid var(--panel-border);
-  border-radius: 10px;
-  padding: 14px;
-  background: rgba(255, 255, 255, 0.72);
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--panel-border);
+  padding: 14px 18px;
 }
 
 .agent-chat-header h3,
@@ -1990,15 +2227,16 @@ body[data-theme="dark"] .role-marketplace-instance {
   overflow-wrap: anywhere;
 }
 
+.agent-chat-header-actions {
+  margin-left: auto;
+}
+
 .agent-chat-shell {
   display: flex;
-  min-height: 420px;
-  max-height: calc(100vh - 330px);
+  min-height: 0;
+  flex: 1;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--panel-border);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.72);
 }
 
 .agent-chat-messages {
@@ -2007,7 +2245,15 @@ body[data-theme="dark"] .role-marketplace-instance {
   flex: 1;
   place-items: center;
   overflow-y: auto;
-  padding: 24px;
+  overscroll-behavior: contain;
+  padding: 22px clamp(10px, 3vw, 34px);
+  scroll-behavior: smooth;
+}
+
+.agent-chat-messages-ready {
+  align-content: start;
+  place-items: stretch;
+  gap: 14px;
 }
 
 .agent-chat-empty {
@@ -2026,21 +2272,124 @@ body[data-theme="dark"] .role-marketplace-instance {
   line-height: 1.65;
 }
 
+.agent-chat-message {
+  box-sizing: border-box;
+  width: min(70%, 720px);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #ffffff;
+  box-shadow: 0 5px 16px rgba(46, 38, 24, 0.045);
+}
+
+.agent-chat-message-user {
+  justify-self: end;
+  border-color: rgba(79, 116, 200, 0.32);
+  background: rgba(79, 116, 200, 0.1);
+}
+
+.agent-chat-message-assistant {
+  justify-self: start;
+}
+
+.agent-chat-message-error {
+  border-color: rgba(184, 78, 78, 0.34);
+  background: rgba(184, 78, 78, 0.08);
+}
+
+.agent-chat-message-temporary {
+  opacity: 0.86;
+}
+
+.agent-chat-message-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--panel-muted);
+  font-size: 11px;
+}
+
+.agent-chat-message-meta strong {
+  color: var(--panel-ink);
+}
+
+.agent-chat-message-delivery {
+  color: var(--panel-muted);
+}
+
+.agent-chat-message-content {
+  margin: 8px 0 0;
+  color: var(--panel-ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+
+.agent-chat-reply-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  justify-self: start;
+  padding: 2px 4px;
+  color: var(--panel-muted);
+  font-size: 12px;
+}
+
+.agent-chat-typing-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.agent-chat-typing-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: agent-chat-typing 1.2s infinite ease-in-out;
+}
+
+.agent-chat-typing-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.agent-chat-typing-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes agent-chat-typing {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+.agent-chat-feedback {
+  margin: 10px 0 0;
+}
+
 .agent-chat-composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: 10px;
+  flex: 0 0 auto;
   border-top: 1px solid var(--panel-border);
-  padding: 12px;
-  background: rgba(247, 249, 252, 0.94);
+  padding: 12px 16px 16px;
+  background: rgba(255, 253, 248, 0.96);
 }
 
 .agent-chat-input {
   box-sizing: border-box;
   width: 100%;
-  min-height: 78px;
-  max-height: 180px;
+  min-height: 58px;
+  max-height: 150px;
   resize: vertical;
   border: 1px solid #d8dee8;
   border-radius: 9px;
@@ -2061,10 +2410,37 @@ body[data-theme="dark"] .role-marketplace-instance {
   opacity: 0.58;
 }
 
+.agent-chat-retry {
+  min-height: 30px;
+  margin-top: 10px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
 body[data-theme="dark"] .my-role-instance,
-body[data-theme="dark"] .agent-chat-header,
-body[data-theme="dark"] .agent-chat-shell {
+body[data-theme="dark"] .agent-chat-message {
   background: rgba(255, 255, 255, 0.035);
+}
+
+body[data-theme="dark"] .role-marketplace-tab.active,
+body[data-theme="dark"] .chat-assistant-picker {
+  background: #192230;
+}
+
+body[data-theme="dark"] .chat-center-sidebar {
+  background: rgba(18, 25, 35, 0.9);
+}
+
+body[data-theme="dark"] .chat-center-main {
+  background: rgba(13, 20, 31, 0.76);
+}
+
+body[data-theme="dark"] .agent-chat-message-user {
+  background: rgba(79, 116, 200, 0.18);
+}
+
+body[data-theme="dark"] .agent-chat-message-error {
+  background: rgba(184, 78, 78, 0.14);
 }
 
 body[data-theme="dark"] .my-role-status {
@@ -2080,7 +2456,7 @@ body[data-theme="dark"] .my-role-status-unknown {
 }
 
 body[data-theme="dark"] .agent-chat-composer {
-  background: rgba(13, 20, 31, 0.88);
+  background: rgba(19, 24, 32, 0.96);
 }
 
 body[data-theme="dark"] .agent-chat-input {
@@ -2089,8 +2465,7 @@ body[data-theme="dark"] .agent-chat-input {
 }
 
 @media (max-width: 820px) {
-  .my-role-instance,
-  .agent-chat-composer {
+  .my-role-instance {
     grid-template-columns: 1fr;
   }
 
@@ -2098,14 +2473,31 @@ body[data-theme="dark"] .agent-chat-input {
     justify-items: start;
   }
 
-  .agent-chat-header {
-    align-items: flex-start;
-    flex-direction: column;
+  .agent-chat-message {
+    width: 88%;
   }
 
-  .agent-chat-shell {
-    min-height: 380px;
-    max-height: none;
+  .chat-center-page {
+    grid-template-columns: 215px minmax(0, 1fr);
+    height: calc(100vh - 76px);
+  }
+
+  .chat-center-sidebar-header {
+    padding: 12px;
+  }
+
+  .chat-conversation-item {
+    padding: 11px 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat-messages {
+    scroll-behavior: auto;
+  }
+
+  .agent-chat-typing-dots i {
+    animation: none;
   }
 }
 
@@ -2755,4 +3147,373 @@ body[data-theme="dark"] .sidebar-mini-status span {
 
 body[data-theme="dark"] .sidebar-mini-status strong {
   color: rgba(255, 255, 255, 0.72);
+}
+
+/* Compact product navigation and full-width role/chat workspaces. */
+.app-layout,
+.sidebar,
+.sidebar-link,
+.sidebar-brand-full,
+.sidebar-mini-status {
+  transition: grid-template-columns 180ms ease, width 180ms ease, padding 180ms ease,
+    opacity 140ms ease, background-color 140ms ease;
+}
+
+.sidebar-topline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.sidebar-brand {
+  margin-bottom: 0;
+}
+
+.sidebar-brand-compact {
+  display: none;
+}
+
+.sidebar-toggle {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--panel-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.sidebar-toggle:hover,
+.sidebar-toggle:focus-visible {
+  color: var(--panel-ink);
+  background: rgba(79, 116, 200, 0.10);
+  outline: none;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-link-icon {
+  display: inline-grid;
+  width: 20px;
+  flex: 0 0 20px;
+  place-items: center;
+  font-size: 16px;
+}
+
+body.sidebar-collapsed .app-layout {
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 18px;
+}
+
+body.sidebar-collapsed .sidebar {
+  width: 72px;
+  padding: 12px 9px;
+}
+
+body.sidebar-collapsed .sidebar-topline {
+  display: grid;
+  justify-items: center;
+}
+
+body.sidebar-collapsed .sidebar-brand-full,
+body.sidebar-collapsed .sidebar-section-title,
+body.sidebar-collapsed .sidebar-link-label,
+body.sidebar-collapsed .sidebar-link-note,
+body.sidebar-collapsed .sidebar-mini-status span {
+  display: none;
+}
+
+body.sidebar-collapsed .sidebar-brand-compact {
+  display: block;
+  font-size: 15px;
+}
+
+body.sidebar-collapsed .sidebar-link {
+  justify-content: center;
+  min-height: 42px;
+  border-left-width: 0;
+  padding: 0;
+  text-align: center;
+}
+
+body.sidebar-collapsed .sidebar-link.active {
+  box-shadow: inset 3px 0 0 var(--panel-accent);
+}
+
+body.sidebar-collapsed .sidebar-mini-status {
+  justify-content: center;
+}
+
+.wizard-panel:has(.wizard-card-role-marketplace),
+.wizard-panel:has(.wizard-card-agent-chat) {
+  overflow: hidden;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.wizard-panel:has(.wizard-card-role-marketplace) > .section-heading,
+.wizard-panel:has(.wizard-card-role-marketplace) > .wizard-progress,
+.wizard-panel:has(.wizard-card-role-marketplace) > .wizard-actions,
+.wizard-panel:has(.wizard-card-role-marketplace) > .wizard-utilities,
+.wizard-panel:has(.wizard-card-agent-chat) > .section-heading,
+.wizard-panel:has(.wizard-card-agent-chat) > .wizard-progress,
+.wizard-panel:has(.wizard-card-agent-chat) > .wizard-actions,
+.wizard-panel:has(.wizard-card-agent-chat) > .wizard-utilities {
+  display: none;
+}
+
+.wizard-card-role-marketplace,
+.wizard-card-agent-chat {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.role-marketplace-page {
+  gap: 16px;
+}
+
+.role-marketplace-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--panel-border);
+  padding: 20px 22px 16px;
+}
+
+.role-marketplace-page-header h2,
+.role-marketplace-page-header p {
+  margin: 0;
+}
+
+.role-marketplace-page-header p {
+  margin-top: 6px;
+  color: var(--panel-muted);
+}
+
+.role-marketplace-page > .role-marketplace-tabs,
+.role-marketplace-page > .role-marketplace-grid,
+.role-marketplace-page > .my-roles-grid,
+.role-marketplace-page > .notice,
+.role-marketplace-page > .toolbox-page-card {
+  margin-right: 22px;
+  margin-left: 22px;
+}
+
+.role-marketplace-page > :last-child {
+  margin-bottom: 22px;
+}
+
+.chat-center-page {
+  grid-template-columns: 300px minmax(0, 1fr);
+  min-height: 640px;
+  height: calc(100vh - 64px);
+  max-height: none;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: var(--panel-surface);
+  box-shadow: var(--panel-shadow);
+}
+
+.chat-center-sidebar-header {
+  gap: 12px;
+}
+
+.chat-center-sidebar-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.chat-center-sidebar-actions button {
+  min-width: 0;
+}
+
+.chat-conversation-item.active {
+  box-shadow: inset 3px 0 0 #4f74c8;
+}
+
+.chat-center-empty-actions {
+  display: flex;
+  max-width: 480px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.chat-picker-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 14px 18px 0;
+  border-radius: 10px;
+  padding: 4px;
+  background: rgba(91, 101, 118, 0.09);
+}
+
+.chat-picker-mode-tab {
+  min-height: 38px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--panel-muted);
+  background: transparent;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.chat-picker-mode-tab.active {
+  color: var(--panel-ink);
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(38, 43, 52, 0.08);
+}
+
+.chat-picker-title-field {
+  display: grid;
+  gap: 7px;
+  margin: 14px 18px 0;
+  color: var(--panel-ink);
+  font-weight: 700;
+}
+
+.chat-picker-title-field input {
+  min-height: 42px;
+  border: 1px solid var(--panel-border);
+  border-radius: 9px;
+  padding: 0 12px;
+  color: var(--panel-ink);
+  background: var(--panel-surface);
+  font: inherit;
+}
+
+.chat-picker-title-field input:focus {
+  border-color: #4f74c8;
+  outline: 3px solid rgba(79, 116, 200, 0.14);
+}
+
+.chat-assistant-role-group {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-assistant-role-group h4 {
+  margin: 8px 4px 0;
+  color: var(--panel-muted);
+  font-size: 12px;
+}
+
+.chat-assistant-option {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  cursor: default;
+}
+
+.chat-assistant-option-copy,
+.chat-assistant-option-actions {
+  display: grid;
+  gap: 4px;
+}
+
+.chat-assistant-option-actions {
+  grid-auto-flow: column;
+  align-items: center;
+}
+
+.chat-assistant-option.unavailable {
+  opacity: 0.62;
+}
+
+.chat-picker-team-future {
+  display: grid;
+  min-height: 260px;
+  place-items: center;
+  align-content: center;
+  gap: 16px;
+  padding: 24px;
+}
+
+body[data-theme="dark"] .sidebar-toggle,
+body[data-theme="dark"] .chat-picker-title-field input {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+body[data-theme="dark"] .chat-picker-mode-tab.active {
+  background: #192230;
+}
+
+@media (max-width: 860px) {
+  .app-layout {
+    grid-template-columns: 190px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  body.sidebar-collapsed .app-layout {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 12px;
+    width: auto;
+    min-height: calc(100vh - 24px);
+    padding: 10px 8px;
+  }
+
+  body.sidebar-collapsed .sidebar {
+    width: 72px;
+  }
+
+  .app-shell {
+    width: calc(100vw - 24px);
+    padding: 12px 0;
+  }
+
+  .chat-center-page {
+    grid-template-columns: 1fr;
+    height: calc(100vh - 24px);
+    min-height: 560px;
+  }
+
+  .chat-center-main {
+    display: none;
+  }
+
+  .chat-center-has-selection .chat-center-sidebar {
+    display: none;
+  }
+
+  .chat-center-has-selection .chat-center-main {
+    display: block;
+  }
+
+  .chat-assistant-option {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-assistant-option-actions {
+    grid-auto-flow: row;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-layout,
+  .sidebar,
+  .sidebar-link,
+  .sidebar-brand-full,
+  .sidebar-mini-status {
+    transition: none;
+  }
 }

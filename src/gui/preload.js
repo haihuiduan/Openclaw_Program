@@ -55,6 +55,38 @@ contextBridge.exposeInMainWorld("openClawInstaller", {
   enableMarketplaceRole(roleId) {
     return ipcRenderer.invoke("role-marketplace:enable", roleId);
   },
+  listChatConversations() {
+    return ipcRenderer.invoke("chat-center:list");
+  },
+  createNewAgentChat(instanceId, title) {
+    return ipcRenderer.invoke("agent-chat:create", instanceId, title);
+  },
+  openExistingAgentChat(conversationId) {
+    return ipcRenderer.invoke("agent-chat:open-existing", conversationId);
+  },
+  listAgentChatMessages(instanceId, conversationId, pagination) {
+    return ipcRenderer.invoke(
+      "agent-chat:messages",
+      instanceId,
+      conversationId,
+      pagination
+    );
+  },
+  sendAgentChatMessage(instanceId, conversationId, content) {
+    return ipcRenderer.invoke(
+      "agent-chat:send",
+      instanceId,
+      conversationId,
+      content
+    );
+  },
+  reconcileAgentChat(instanceId, conversationId) {
+    return ipcRenderer.invoke(
+      "agent-chat:reconcile",
+      instanceId,
+      conversationId
+    );
+  },
   openLogsDirectory() {
     return ipcRenderer.invoke("logs:open");
   },

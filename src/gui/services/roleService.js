@@ -156,7 +156,7 @@ function createRoleService(api = publicApi, options = {}) {
             installed: true,
             instances: role ? role.instances : [],
             instanceCount: role ? role.instanceCount : 0,
-            message: "已有 Agent Instance 缺失或配置漂移，请先修复后重试。",
+            message: "已有助手缺失或配置异常，请先修复后重试。",
             marketplace
           });
         }
@@ -177,7 +177,7 @@ function createRoleService(api = publicApi, options = {}) {
             installed: true,
             instances: enabledRole ? enabledRole.instances : [],
             instanceCount: enabledRole ? enabledRole.instanceCount : 0,
-            message: "角色只完成部分启用，请核对 Agent Instance 状态后重试。",
+            message: "部分助手尚未准备完成，请刷新状态后重试。",
             marketplace
           });
         }
@@ -214,7 +214,7 @@ function createRoleService(api = publicApi, options = {}) {
           instanceCount: currentRole ? currentRole.instanceCount : 0,
           instances: currentRole ? currentRole.instances : [],
           message: partial
-            ? "角色只完成部分启用，请核对 Agent Instance 状态后重试。"
+            ? "部分助手尚未准备完成，请刷新状态后重试。"
             : classifyEnableError(error),
           marketplace
         });
@@ -421,19 +421,19 @@ function classifyEnableError(error) {
   const message = typeof (error && error.message) === "string" ? error.message : "";
 
   if (/当前为 missing|当前为 drifted|配置漂移|注册结果缺失/.test(message)) {
-    return "已有 Agent Instance 缺失或配置漂移，请先修复后重试。";
+    return "已有助手缺失或配置异常，请先修复后重试。";
   }
   if (/已存在同名 Agent|已由 OpenClaw Agent 使用|已归属于其他|映射不一致|并发冲突/.test(message)) {
-    return "检测到 Agent Instance 名称、映射或目录冲突，为保护现有配置已停止启用。";
+    return "检测到助手名称或配置冲突，为保护现有设置已停止准备。";
   }
   if (/角色尚未安装/.test(message)) {
     return "角色尚未安装，请先安装后再启用。";
   }
   if (/add 命令已成功|已注册，但本地 Instance State 写入失败/.test(message)) {
-    return "OpenClaw 注册结果需要人工核对，请先运行 Instance reconcile。";
+    return "助手准备结果需要核对，请刷新状态后重试。";
   }
   if (/OpenClaw Agent 注册失败|读取 OpenClaw Agent 列表失败/.test(message)) {
-    return "暂时无法完成 OpenClaw Agent 注册，请确认 OpenClaw 可用后重试。";
+    return "暂时无法准备助手，请确认 OpenClaw 可用后重试。";
   }
 
   return SAFE_ENABLE_ERROR_MESSAGE;

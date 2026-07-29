@@ -500,7 +500,7 @@ test("missing 或 drifted Instance 显示需要修复且阻止继续注册", asy
 
     const result = await service.enableMarketplaceRole("cross-border-team");
     assert.equal(result.ok, false);
-    assert.match(result.message, /缺失或配置漂移/);
+    assert.match(result.message, /助手缺失或配置异常/);
     assert.equal(registerCalls, 0);
   }
 });
@@ -538,7 +538,7 @@ test("部分注册失败不会伪装为全部成功并停止后续 Agent 注册"
   assert.equal(result.instanceCount, 1);
   assert.deepEqual(result.instances.map((instance) => instance.roleAgentId), ["manager"]);
   assert.deepEqual(attempted, ["manager", "researcher"]);
-  assert.match(result.message, /部分启用/);
+  assert.match(result.message, /部分助手尚未准备完成/);
   assert.doesNotMatch(JSON.stringify(result), /OpenClaw 中已存在|\/private\//);
 });
 
@@ -563,7 +563,7 @@ test("启用冲突和原始异常转换为安全摘要且不泄露路径或堆�
   const serialized = JSON.stringify(result);
 
   assert.equal(result.ok, false);
-  assert.match(result.message, /名称、映射或目录冲突/);
+  assert.match(result.message, /助手名称或配置冲突/);
   assert.doesNotMatch(serialized, /Users|private|secret stack|other-agent|agentDir/);
 });
 
