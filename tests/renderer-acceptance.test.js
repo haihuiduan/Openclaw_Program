@@ -360,7 +360,7 @@ test("角色市场覆盖 idle、loading、error、ready 和空列表状态并支
   assert.match(page, /重新加载/);
 });
 
-test("角色卡展示真实成员和局部安装入口，但不提供卸载或角色定向聊天", () => {
+test("角色卡按安装和启用状态展示真实成员，但不提供卸载或角色定向聊天", () => {
   const renderer = readRenderer();
   const roleCard = getFunctionBlock(renderer, "createMarketplaceRoleCard");
   const marketplacePage = getFunctionBlock(renderer, "renderRoleMarketplacePage");
@@ -369,9 +369,15 @@ test("角色卡展示真实成员和局部安装入口，但不提供卸载或�
   assert.match(roleCard, /role\.agents/);
   assert.match(roleCard, /安装角色/);
   assert.match(roleCard, /正在安装…/);
-  assert.match(roleCard, /label: "已安装"/);
+  assert.match(roleCard, /\? "已安装"/);
+  assert.match(roleCard, /启用角色/);
+  assert.match(roleCard, /正在启用…/);
+  assert.match(roleCard, /label: "已启用"/);
+  assert.match(roleCard, /role\.instances/);
+  assert.match(roleCard, /需要修复/);
   assert.match(roleCard, /角色聊天即将开放/);
   assert.doesNotMatch(renderer, /与该角色聊天/);
+  assert.doesNotMatch(renderer, /团队群聊/);
   assert.doesNotMatch(renderer, /removeRole|卸载角色/);
   assert.match(marketplacePage, /打开 OpenClaw 控制台/);
   assert.match(marketplacePage, /自行选择 Agent/);
@@ -419,6 +425,53 @@ test("角色安装成功更新市场状态，失败恢复局部按钮并使用�
   assert.match(applyResult, /marketplace\.roles = result\.roles/);
   assert.match(safeMessage, /\[路径已隐藏\]/);
   assert.doesNotMatch(install, /error\.message|error\.stack/);
+});
+
+test("角色启用通过 preload 固定 IPC 契约且 renderer 不能传路径或实例配置", () => {
+  const renderer = readRenderer();
+  const preload = readFile("src/gui/preload.js");
+  const main = readFile("src/gui/main.js");
+  const enable = getFunctionBlock(renderer, "enableMarketplaceRole");
+
+  assert.match(enable, /window\.openClawInstaller\.enableMarketplaceRole\(roleId\)/);
+  assert.doesNotMatch(
+    enable,
+    /workspacePath|agentDir|statePath|instanceId|options/
+  );
+  assert.match(preload, /enableMarketplaceRole\(roleId\)/);
+  assert.match(preload, /invoke\("role-marketplace:enable", roleId\)/);
+  assert.doesNotMatch(preload, /role-marketplace:enable", roleId,/);
+  assert.match(main, /ipcMain\.handle\("role-marketplace:enable", async \(event, roleId\)/);
+  assert.match(main, /roleService\.enableMarketplaceRole\(roleId\.trim\(\)\)/);
+});
+
+test("角色启用使用每个 roleId 的局部状态并阻止同角色重复提交", () => {
+  const renderer = readRenderer();
+  const roleCard = getFunctionBlock(renderer, "createMarketplaceRoleCard");
+  const enable = getFunctionBlock(renderer, "enableMarketplaceRole");
+
+  assert.match(roleCard, /enablements\[role\.id\]/);
+  assert.match(roleCard, /pending: enabling/);
+  assert.match(roleCard, /disabled: enabling/);
+  assert.match(enable, /current && current\.status === "enabling"/);
+  assert.match(enable, /enablements\[roleId\]/);
+  assert.doesNotMatch(enable, /setBusy\(|wizardState\.isBusy/);
+});
+
+test("角色启用成功展示真实 Instance，失败恢复局部按钮并使用安全提示", () => {
+  const renderer = readRenderer();
+  const roleCard = getFunctionBlock(renderer, "createMarketplaceRoleCard");
+  const statusText = getFunctionBlock(renderer, "getMarketplaceRoleStatusText");
+  const enable = getFunctionBlock(renderer, "enableMarketplaceRole");
+
+  assert.match(enable, /result\.marketplace/);
+  assert.match(enable, /status: "success"/);
+  assert.match(enable, /status: "error"/);
+  assert.match(enable, /result\.alreadyEnabled/);
+  assert.match(statusText, /已启用 \$\{role\.instanceCount\} 个 Agent Instance/);
+  assert.match(roleCard, /instance\.instanceId/);
+  assert.match(roleCard, /getMarketplaceInstanceStatus\(instance\.status\)/);
+  assert.doesNotMatch(enable, /error\.message|error\.stack/);
 });
 
 test("角色市场 renderer 不直接访问 Node.js、文件系统或子进程", () => {

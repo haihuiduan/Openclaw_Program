@@ -1811,7 +1811,8 @@ body.is-home-dashboard .app-main {
   font-weight: 750;
 }
 
-.role-marketplace-install-feedback {
+.role-marketplace-install-feedback,
+.role-marketplace-enable-feedback {
   margin-top: 12px;
 }
 
@@ -1822,7 +1823,8 @@ body.is-home-dashboard .app-main {
   font-size: 13px;
 }
 
-.role-marketplace-agent-list {
+.role-marketplace-agent-list,
+.role-marketplace-instance-list {
   display: grid;
   gap: 9px;
   margin: 10px 0 0;
@@ -1830,7 +1832,8 @@ body.is-home-dashboard .app-main {
   list-style: none;
 }
 
-.role-marketplace-agent {
+.role-marketplace-agent,
+.role-marketplace-instance {
   display: grid;
   gap: 3px;
   border: 1px solid var(--panel-border);
@@ -1839,12 +1842,14 @@ body.is-home-dashboard .app-main {
   background: rgba(255, 255, 255, 0.58);
 }
 
-.role-marketplace-agent strong {
+.role-marketplace-agent strong,
+.role-marketplace-instance strong {
   color: var(--panel-ink);
   font-size: 13px;
 }
 
-.role-marketplace-agent span {
+.role-marketplace-agent span,
+.role-marketplace-instance span {
   color: var(--panel-muted);
   font-size: 12px;
   line-height: 1.5;
@@ -1859,7 +1864,8 @@ body[data-theme="dark"] .role-marketplace-install-status {
   color: #a9d4b2;
 }
 
-body[data-theme="dark"] .role-marketplace-agent {
+body[data-theme="dark"] .role-marketplace-agent,
+body[data-theme="dark"] .role-marketplace-instance {
   background: rgba(255, 255, 255, 0.035);
 }
 

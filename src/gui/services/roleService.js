@@ -3,24 +3,32 @@ const publicApi = require("../../index");
 
 const SAFE_ERROR_MESSAGE = "角色列表暂时无法加载，请稍后重试。";
 const SAFE_INSTALL_ERROR_MESSAGE = "角色安装未完成，请稍后重试。";
+const SAFE_ENABLE_ERROR_MESSAGE = "角色启用未完成，请稍后重试。";
 const ROLE_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_ROLE_ID_LENGTH = 128;
 
 function createRoleService(api = publicApi, options = {}) {
   const lifecycleOptions = normalizeLifecycleOptions(options.lifecycleOptions);
+  const instanceOptions = normalizeLifecycleOptions(options.instanceOptions);
   const service = {
     async listMarketplaceRoles() {
       try {
-        const [registry, installedRoles] = await Promise.all([
+        const [registry, installedRoles, instanceRecords] = await Promise.all([
           api.scanRoleRegistry(lifecycleOptions),
-          api.listInstalledRoles(lifecycleOptions)
+          api.listInstalledRoles(lifecycleOptions),
+          api.listInstances(instanceOptions)
         ]);
         const installedById = new Map(
           (Array.isArray(installedRoles) ? installedRoles : [])
             .map((role) => [role.id, role])
         );
+        const instances = Array.isArray(instanceRecords) ? instanceRecords : [];
         const roles = (Array.isArray(registry && registry.roles) ? registry.roles : [])
-          .map((role) => toMarketplaceRole(role, installedById.get(role.id)))
+          .map((role) => toMarketplaceRole(
+            role,
+            installedById.get(role.id),
+            instances.filter((instance) => instance.roleId === role.id)
+          ))
           .sort((left, right) => left.id.localeCompare(right.id));
 
         return {
@@ -79,14 +87,145 @@ function createRoleService(api = publicApi, options = {}) {
           marketplace
         });
       }
+    },
+
+    async enableMarketplaceRole(roleId) {
+      const normalizedRoleId = normalizeRoleId(roleId);
+      if (!normalizedRoleId) {
+        return createEnableResponse({
+          message: "角色标识无效，无法启用。",
+          marketplace: await service.listMarketplaceRoles()
+        });
+      }
+
+      let marketplace = await service.listMarketplaceRoles();
+      let role = findMarketplaceRole(marketplace, normalizedRoleId);
+      if (!role) {
+        return createEnableResponse({
+          roleId: normalizedRoleId,
+          message: "未找到该角色，请刷新角色列表后重试。",
+          marketplace
+        });
+      }
+      if (!role.installed) {
+        return createEnableResponse({
+          roleId: normalizedRoleId,
+          message: "角色尚未安装，请先安装后再启用。",
+          marketplace
+        });
+      }
+
+      const results = [];
+      try {
+        await api.reconcileInstances(instanceOptions);
+        marketplace = await service.listMarketplaceRoles();
+        role = findMarketplaceRole(marketplace, normalizedRoleId);
+
+        if (!role || role.enablementStatus === "needs-repair") {
+          return createEnableResponse({
+            roleId: normalizedRoleId,
+            installed: true,
+            instances: role ? role.instances : [],
+            instanceCount: role ? role.instanceCount : 0,
+            message: "已有 Agent Instance 缺失或配置漂移，请先修复后重试。",
+            marketplace
+          });
+        }
+
+        for (const agent of role.agents) {
+          results.push(await api.registerInstance(
+            normalizedRoleId,
+            agent.id,
+            instanceOptions
+          ));
+        }
+
+        marketplace = await service.listMarketplaceRoles();
+        const enabledRole = findMarketplaceRole(marketplace, normalizedRoleId);
+        if (!enabledRole || !enabledRole.enabled) {
+          return createEnableResponse({
+            roleId: normalizedRoleId,
+            installed: true,
+            instances: enabledRole ? enabledRole.instances : [],
+            instanceCount: enabledRole ? enabledRole.instanceCount : 0,
+            message: "角色只完成部分启用，请核对 Agent Instance 状态后重试。",
+            marketplace
+          });
+        }
+
+        return createEnableResponse({
+          ok: true,
+          roleId: normalizedRoleId,
+          installed: true,
+          enabled: true,
+          alreadyEnabled: results.every((result) => (
+            result && result.alreadyRegistered === true
+          )),
+          instanceCount: enabledRole.instanceCount,
+          instances: enabledRole.instances,
+          message: results.every((result) => result && result.alreadyRegistered === true)
+            ? "该角色已经启用，无需重复注册。"
+            : "角色启用成功。",
+          marketplace
+        });
+      } catch (error) {
+        await api.reconcileInstances(instanceOptions).catch(() => {});
+        marketplace = await service.listMarketplaceRoles();
+        const currentRole = findMarketplaceRole(marketplace, normalizedRoleId);
+        const partial = Boolean(
+          currentRole &&
+          !currentRole.enabled &&
+          currentRole.instanceCount > 0
+        );
+
+        return createEnableResponse({
+          roleId: normalizedRoleId,
+          installed: true,
+          enabled: Boolean(currentRole && currentRole.enabled),
+          instanceCount: currentRole ? currentRole.instanceCount : 0,
+          instances: currentRole ? currentRole.instances : [],
+          message: partial
+            ? "角色只完成部分启用，请核对 Agent Instance 状态后重试。"
+            : classifyEnableError(error),
+          marketplace
+        });
+      }
     }
   };
 
   return service;
 }
 
-function toMarketplaceRole(role, installedRole) {
+function toMarketplaceRole(role, installedRole, instanceRecords) {
   const installed = Boolean(installedRole);
+  const agentNames = new Map(
+    (Array.isArray(role.agents) ? role.agents : [])
+      .map((agent) => [agent.id, safeText(agent.name)])
+  );
+  const instances = (Array.isArray(instanceRecords) ? instanceRecords : [])
+    .filter((instance) => agentNames.has(instance.roleAgentId))
+    .map((instance) => ({
+      instanceId: safeText(instance.instanceId),
+      roleAgentId: safeText(instance.roleAgentId),
+      name: agentNames.get(instance.roleAgentId) || safeText(instance.roleAgentId),
+      status: normalizeInstanceStatus(instance.status)
+    }))
+    .sort((left, right) => left.instanceId.localeCompare(right.instanceId));
+  const registeredAgentIds = new Set(
+    instances
+      .filter((instance) => instance.status === "registered")
+      .map((instance) => instance.roleAgentId)
+  );
+  const registeredInstanceCount = registeredAgentIds.size;
+  const expectedAgentIds = [...agentNames.keys()];
+  const hasUnhealthyInstance = instances.some((instance) => (
+    instance.status === "missing" || instance.status === "drifted"
+  ));
+  const enabled = Boolean(
+    installed &&
+    expectedAgentIds.length > 0 &&
+    expectedAgentIds.every((agentId) => registeredAgentIds.has(agentId))
+  );
 
   return {
     id: safeText(role.id),
@@ -104,7 +243,16 @@ function toMarketplaceRole(role, installedRole) {
     installed,
     installedVersion: installed ? safeText(installedRole.version) : null,
     installedAt: installed ? safeNullableText(installedRole.installedAt) : null,
-    status: installed ? safeText(installedRole.status || "installed") : "not-installed"
+    status: installed ? safeText(installedRole.status || "installed") : "not-installed",
+    enabled,
+    enablementStatus: getEnablementStatus({
+      installed,
+      enabled,
+      hasUnhealthyInstance,
+      registeredInstanceCount
+    }),
+    instanceCount: registeredInstanceCount,
+    instances
   };
 }
 
@@ -151,6 +299,33 @@ function normalizeRoleId(value) {
   return normalized;
 }
 
+function normalizeInstanceStatus(value) {
+  return ["registered", "missing", "drifted"].includes(value) ? value : "unknown";
+}
+
+function getEnablementStatus(input) {
+  if (!input.installed) {
+    return "not-installed";
+  }
+  if (input.hasUnhealthyInstance) {
+    return "needs-repair";
+  }
+  if (input.enabled) {
+    return "enabled";
+  }
+  if (input.registeredInstanceCount > 0) {
+    return "partial";
+  }
+  return "not-enabled";
+}
+
+function findMarketplaceRole(marketplace, roleId) {
+  if (!marketplace || marketplace.ok !== true || !Array.isArray(marketplace.roles)) {
+    return null;
+  }
+  return marketplace.roles.find((role) => role.id === roleId) || null;
+}
+
 function classifyInstallError(error) {
   const message = typeof (error && error.message) === "string" ? error.message : "";
 
@@ -176,6 +351,28 @@ function classifyInstallError(error) {
   return SAFE_INSTALL_ERROR_MESSAGE;
 }
 
+function classifyEnableError(error) {
+  const message = typeof (error && error.message) === "string" ? error.message : "";
+
+  if (/当前为 missing|当前为 drifted|配置漂移|注册结果缺失/.test(message)) {
+    return "已有 Agent Instance 缺失或配置漂移，请先修复后重试。";
+  }
+  if (/已存在同名 Agent|已由 OpenClaw Agent 使用|已归属于其他|映射不一致|并发冲突/.test(message)) {
+    return "检测到 Agent Instance 名称、映射或目录冲突，为保护现有配置已停止启用。";
+  }
+  if (/角色尚未安装/.test(message)) {
+    return "角色尚未安装，请先安装后再启用。";
+  }
+  if (/add 命令已成功|已注册，但本地 Instance State 写入失败/.test(message)) {
+    return "OpenClaw 注册结果需要人工核对，请先运行 Instance reconcile。";
+  }
+  if (/OpenClaw Agent 注册失败|读取 OpenClaw Agent 列表失败/.test(message)) {
+    return "暂时无法完成 OpenClaw Agent 注册，请确认 OpenClaw 可用后重试。";
+  }
+
+  return SAFE_ENABLE_ERROR_MESSAGE;
+}
+
 function createInstallResponse(overrides) {
   return {
     ok: false,
@@ -193,10 +390,31 @@ function createInstallResponse(overrides) {
   };
 }
 
+function createEnableResponse(overrides) {
+  return {
+    ok: false,
+    roleId: null,
+    installed: false,
+    enabled: false,
+    alreadyEnabled: false,
+    instanceCount: 0,
+    instances: [],
+    message: SAFE_ENABLE_ERROR_MESSAGE,
+    marketplace: {
+      ok: false,
+      roles: [],
+      invalidRoleCount: 0,
+      message: SAFE_ERROR_MESSAGE
+    },
+    ...overrides
+  };
+}
+
 const roleService = createRoleService();
 
 module.exports = {
   createRoleService,
+  enableMarketplaceRole: roleService.enableMarketplaceRole,
   installMarketplaceRole: roleService.installMarketplaceRole,
   listMarketplaceRoles: roleService.listMarketplaceRoles
 };

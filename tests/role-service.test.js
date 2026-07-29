@@ -8,6 +8,7 @@ const {
   createRoleService
 } = require("../src/gui/services/roleService");
 const { projectPath } = require("./helpers");
+const publicApi = require("../src");
 
 function createApi(overrides = {}) {
   return {
@@ -48,7 +49,41 @@ function createApi(overrides = {}) {
     async listInstalledRoles() {
       return [];
     },
+    async listInstances() {
+      return [];
+    },
+    async reconcileInstances() {
+      return {
+        instances: [],
+        unmanagedAgents: []
+      };
+    },
     ...overrides
+  };
+}
+
+function createInstalledRoleRecord() {
+  return {
+    id: "cross-border-team",
+    name: "跨境电商运营团队",
+    version: "1.0.0",
+    installedAt: "2026-07-29T12:00:00.000Z",
+    status: "installed",
+    agentCount: 3,
+    workspacePath: "/private/install/cross-border-team"
+  };
+}
+
+function createSafeInstance(roleAgentId, status = "registered") {
+  return {
+    instanceId: `cross-border-team-${roleAgentId}`,
+    roleId: "cross-border-team",
+    roleVersion: "1.0.0",
+    roleAgentId,
+    workspacePath: `/private/workspaces/${roleAgentId}`,
+    agentDir: `/private/agent-dirs/cross-border-team-${roleAgentId}`,
+    status,
+    drift: status === "missing" ? ["missing"] : status === "drifted" ? ["workspace"] : []
   };
 }
 
@@ -81,7 +116,11 @@ test("角色服务将合法角色转换为安全的未安装 UI DTO", async () =
     installed: false,
     installedVersion: null,
     installedAt: null,
-    status: "not-installed"
+    status: "not-installed",
+    enabled: false,
+    enablementStatus: "not-installed",
+    instanceCount: 0,
+    instances: []
   });
 });
 
@@ -107,6 +146,8 @@ test("角色服务按 roleId 合并已安装状态且不返回 workspace 路径"
   assert.equal(role.installedVersion, "1.0.0");
   assert.equal(role.installedAt, "2026-07-29T10:00:00.000Z");
   assert.equal(role.status, "installed");
+  assert.equal(role.enabled, false);
+  assert.equal(role.enablementStatus, "not-enabled");
   assert.equal("workspacePath" in role, false);
   assert.equal("installDirectory" in role, false);
 });
@@ -325,8 +366,250 @@ test("版本冲突返回固定可读摘要而不泄露核心错误详情", async
   assert.doesNotMatch(result.message, /cross-border-team|0\.9\.0|1\.0\.0/);
 });
 
+test("未安装角色不能启用且不会调用 reconcile 或 register", async () => {
+  let reconcileCalls = 0;
+  let registerCalls = 0;
+  const service = createRoleService(createApi({
+    async reconcileInstances() {
+      reconcileCalls += 1;
+    },
+    async registerInstance() {
+      registerCalls += 1;
+    }
+  }));
+
+  const result = await service.enableMarketplaceRole("cross-border-team");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.enabled, false);
+  assert.equal(result.message, "角色尚未安装，请先安装后再启用。");
+  assert.equal(reconcileCalls, 0);
+  assert.equal(registerCalls, 0);
+});
+
+test("已安装多 Agent 角色逐个注册为稳定独立 Instance", async () => {
+  const instances = [];
+  const calls = [];
+  const api = createApi({
+    async listInstalledRoles() {
+      return [createInstalledRoleRecord()];
+    },
+    async listInstances() {
+      return instances.map((instance) => ({ ...instance }));
+    },
+    async reconcileInstances(options) {
+      calls.push({ method: "reconcileInstances", options });
+      return { instances, unmanagedAgents: [] };
+    },
+    async registerInstance(roleId, roleAgentId, options) {
+      calls.push({ method: "registerInstance", roleId, roleAgentId, options });
+      const instance = createSafeInstance(roleAgentId);
+      instances.push(instance);
+      return {
+        ok: true,
+        alreadyRegistered: false,
+        instance
+      };
+    }
+  });
+  const service = createRoleService(api);
+
+  const result = await service.enableMarketplaceRole("cross-border-team");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.enabled, true);
+  assert.equal(result.alreadyEnabled, false);
+  assert.equal(result.instanceCount, 3);
+  assert.deepEqual(result.instances.map((instance) => instance.instanceId), [
+    "cross-border-team-creator",
+    "cross-border-team-manager",
+    "cross-border-team-researcher"
+  ]);
+  assert.deepEqual(
+    calls.filter((call) => call.method === "registerInstance")
+      .map((call) => [call.roleId, call.roleAgentId]),
+    [
+      ["cross-border-team", "manager"],
+      ["cross-border-team", "researcher"],
+      ["cross-border-team", "creator"]
+    ]
+  );
+  assert.doesNotMatch(JSON.stringify(result), /workspacePath|agentDir|\/private\//);
+});
+
+test("重复启用复用 Core 幂等注册且不产生新的 Instance", async () => {
+  const instances = [];
+  let newRegistrations = 0;
+  const api = createApi({
+    async listInstalledRoles() {
+      return [createInstalledRoleRecord()];
+    },
+    async listInstances() {
+      return instances.map((instance) => ({ ...instance }));
+    },
+    async reconcileInstances() {
+      return { instances, unmanagedAgents: [] };
+    },
+    async registerInstance(roleId, roleAgentId) {
+      const existing = instances.find((instance) => instance.roleAgentId === roleAgentId);
+      if (existing) {
+        return { ok: true, alreadyRegistered: true, instance: existing };
+      }
+      const instance = createSafeInstance(roleAgentId);
+      instances.push(instance);
+      newRegistrations += 1;
+      return { ok: true, alreadyRegistered: false, instance };
+    }
+  });
+  const service = createRoleService(api);
+
+  const first = await service.enableMarketplaceRole("cross-border-team");
+  const second = await service.enableMarketplaceRole("cross-border-team");
+
+  assert.equal(first.alreadyEnabled, false);
+  assert.equal(second.ok, true);
+  assert.equal(second.alreadyEnabled, true);
+  assert.equal(newRegistrations, 3);
+  assert.equal(instances.length, 3);
+});
+
+test("missing 或 drifted Instance 显示需要修复且阻止继续注册", async () => {
+  for (const status of ["missing", "drifted"]) {
+    let registerCalls = 0;
+    const instances = [createSafeInstance("manager", status)];
+    const service = createRoleService(createApi({
+      async listInstalledRoles() {
+        return [createInstalledRoleRecord()];
+      },
+      async listInstances() {
+        return instances;
+      },
+      async reconcileInstances() {
+        return { instances, unmanagedAgents: [] };
+      },
+      async registerInstance() {
+        registerCalls += 1;
+      }
+    }));
+
+    const marketplace = await service.listMarketplaceRoles();
+    const role = marketplace.roles[0];
+    assert.equal(role.enabled, false);
+    assert.equal(role.enablementStatus, "needs-repair");
+    assert.equal(role.instances[0].status, status);
+
+    const result = await service.enableMarketplaceRole("cross-border-team");
+    assert.equal(result.ok, false);
+    assert.match(result.message, /缺失或配置漂移/);
+    assert.equal(registerCalls, 0);
+  }
+});
+
+test("部分注册失败不会伪装为全部成功并停止后续 Agent 注册", async () => {
+  const instances = [];
+  const attempted = [];
+  const service = createRoleService(createApi({
+    async listInstalledRoles() {
+      return [createInstalledRoleRecord()];
+    },
+    async listInstances() {
+      return instances;
+    },
+    async reconcileInstances() {
+      return { instances, unmanagedAgents: [] };
+    },
+    async registerInstance(roleId, roleAgentId) {
+      attempted.push(roleAgentId);
+      if (roleAgentId === "researcher") {
+        throw new Error(
+          "OpenClaw 中已存在同名 Agent，拒绝覆盖或接管：cross-border-team-researcher"
+        );
+      }
+      const instance = createSafeInstance(roleAgentId);
+      instances.push(instance);
+      return { ok: true, alreadyRegistered: false, instance };
+    }
+  }));
+
+  const result = await service.enableMarketplaceRole("cross-border-team");
+
+  assert.equal(result.ok, false);
+  assert.equal(result.enabled, false);
+  assert.equal(result.instanceCount, 1);
+  assert.deepEqual(result.instances.map((instance) => instance.roleAgentId), ["manager"]);
+  assert.deepEqual(attempted, ["manager", "researcher"]);
+  assert.match(result.message, /部分启用/);
+  assert.doesNotMatch(JSON.stringify(result), /OpenClaw 中已存在|\/private\//);
+});
+
+test("启用冲突和原始异常转换为安全摘要且不泄露路径或堆栈", async () => {
+  const rawError = new Error(
+    "agentDir 已由 OpenClaw Agent 使用：other-agent /Users/example/private/agent"
+  );
+  rawError.stack = "secret stack /private/internal/manager.js";
+  const service = createRoleService(createApi({
+    async listInstalledRoles() {
+      return [createInstalledRoleRecord()];
+    },
+    async reconcileInstances() {
+      return { instances: [], unmanagedAgents: [] };
+    },
+    async registerInstance() {
+      throw rawError;
+    }
+  }));
+
+  const result = await service.enableMarketplaceRole("cross-border-team");
+  const serialized = JSON.stringify(result);
+
+  assert.equal(result.ok, false);
+  assert.match(result.message, /名称、映射或目录冲突/);
+  assert.doesNotMatch(serialized, /Users|private|secret stack|other-agent|agentDir/);
+});
+
+test("renderer 不能通过启用接口注入路径、instanceId 或 options", async () => {
+  const instances = [];
+  const receivedOptions = [];
+  const instanceOptions = {
+    instanceStatePath: "/safe/internal/instances.json",
+    agentDirRoot: "/safe/internal/agent-dirs"
+  };
+  const service = createRoleService(createApi({
+    async listInstalledRoles() {
+      return [createInstalledRoleRecord()];
+    },
+    async listInstances() {
+      return instances;
+    },
+    async reconcileInstances(options) {
+      receivedOptions.push(options);
+      return { instances, unmanagedAgents: [] };
+    },
+    async registerInstance(roleId, roleAgentId, options) {
+      receivedOptions.push(options);
+      const instance = createSafeInstance(roleAgentId);
+      instances.push(instance);
+      return { ok: true, alreadyRegistered: false, instance };
+    }
+  }), { instanceOptions });
+
+  await service.enableMarketplaceRole("cross-border-team", {
+    instanceId: "attacker-instance",
+    workspacePath: "/private/attacker-workspace",
+    agentDir: "/private/attacker-agent",
+    instanceStatePath: "/private/attacker-state"
+  });
+
+  assert.equal(receivedOptions.length, 4);
+  for (const options of receivedOptions) {
+    assert.deepEqual(options, instanceOptions);
+  }
+});
+
 test("真实公共 API 可在临时目录完成安装、重开读取和幂等复验", async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-role-service-install-"));
+  const root = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-role-service-install-"))
+  );
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const lifecycleOptions = {
     rolesDirectory: projectPath("roles"),
@@ -334,13 +617,27 @@ test("真实公共 API 可在临时目录完成安装、重开读取和幂等复
     statePath: path.join(root, "state", "roles.json"),
     mainWorkspace: path.join(root, "main-workspace")
   };
-  const service = createRoleService(undefined, { lifecycleOptions });
+  const instanceOptions = {
+    roleStatePath: lifecycleOptions.statePath,
+    instanceStatePath: path.join(root, "instance-state", "instances.json"),
+    agentDirRoot: path.join(root, "instance-state", "agent-dirs"),
+    mainWorkspace: lifecycleOptions.mainWorkspace,
+    openClawAdapter: {
+      async listAgents() {
+        return [];
+      },
+      async registerAgent() {
+        throw new Error("本测试不应注册 Agent Instance");
+      }
+    }
+  };
+  const service = createRoleService(undefined, { lifecycleOptions, instanceOptions });
 
   const before = await service.listMarketplaceRoles();
   assert.equal(before.roles.find((role) => role.id === "cross-border-team").installed, false);
 
   const first = await service.installMarketplaceRole("cross-border-team");
-  assert.equal(first.ok, true);
+  assert.equal(first.ok, true, JSON.stringify(first));
   assert.equal(first.alreadyInstalled, false);
   assert.equal(first.marketplace.roles.find((role) => role.id === "cross-border-team").installed, true);
 
@@ -359,7 +656,7 @@ test("真实公共 API 可在临时目录完成安装、重开读取和幂等复
     ]);
   }
 
-  const reopenedService = createRoleService(undefined, { lifecycleOptions });
+  const reopenedService = createRoleService(undefined, { lifecycleOptions, instanceOptions });
   const reopened = await reopenedService.listMarketplaceRoles();
   assert.equal(reopened.roles.find((role) => role.id === "cross-border-team").installed, true);
 
@@ -367,4 +664,92 @@ test("真实公共 API 可在临时目录完成安装、重开读取和幂等复
   assert.equal(second.ok, true);
   assert.equal(second.alreadyInstalled, true);
   assert.doesNotMatch(JSON.stringify(second), new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+});
+
+test("真实公共 API 通过临时 State 和 Mock Adapter 完成三 Instance 启用、重开与 reconcile", async (t) => {
+  const root = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-role-service-enable-"))
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const lifecycleOptions = {
+    rolesDirectory: projectPath("roles"),
+    installRoot: path.join(root, "installed"),
+    statePath: path.join(root, "state", "roles.json"),
+    mainWorkspace: path.join(root, "main-workspace")
+  };
+  const remoteAgents = [];
+  const adapterCalls = [];
+  const openClawAdapter = {
+    async listAgents() {
+      adapterCalls.push({ method: "listAgents" });
+      return remoteAgents.map((agent) => ({ ...agent }));
+    },
+    async registerAgent(input) {
+      adapterCalls.push({
+        method: "registerAgent",
+        instanceId: input.instanceId
+      });
+      remoteAgents.push({
+        id: input.instanceId,
+        workspacePath: input.workspacePath,
+        agentDir: input.agentDir
+      });
+      return { ok: true };
+    }
+  };
+  const instanceOptions = {
+    roleStatePath: lifecycleOptions.statePath,
+    instanceStatePath: path.join(root, "instance-state", "instances.json"),
+    agentDirRoot: path.join(root, "instance-state", "agent-dirs"),
+    mainWorkspace: lifecycleOptions.mainWorkspace,
+    openClawAdapter,
+    now: () => new Date("2026-07-29T13:00:00.000Z")
+  };
+  const service = createRoleService(undefined, { lifecycleOptions, instanceOptions });
+
+  const installed = await service.installMarketplaceRole("cross-border-team");
+  assert.equal(installed.ok, true);
+  assert.equal(installed.marketplace.roles[0].enablementStatus, "not-enabled");
+
+  const first = await service.enableMarketplaceRole("cross-border-team");
+  assert.equal(first.ok, true, JSON.stringify(first));
+  assert.equal(first.enabled, true);
+  assert.equal(first.alreadyEnabled, false);
+  assert.equal(first.instanceCount, 3);
+  assert.deepEqual(first.instances.map((instance) => instance.instanceId), [
+    "cross-border-team-creator",
+    "cross-border-team-manager",
+    "cross-border-team-researcher"
+  ]);
+  assert.equal(
+    adapterCalls.filter((call) => call.method === "registerAgent").length,
+    3
+  );
+  assert.doesNotMatch(JSON.stringify(first), /workspacePath|agentDir/);
+  assert.doesNotMatch(
+    JSON.stringify(first),
+    new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+  );
+
+  const reopenedService = createRoleService(undefined, { lifecycleOptions, instanceOptions });
+  const reopened = await reopenedService.listMarketplaceRoles();
+  assert.equal(reopened.roles[0].enabled, true);
+  assert.equal(reopened.roles[0].instanceCount, 3);
+
+  const second = await reopenedService.enableMarketplaceRole("cross-border-team");
+  assert.equal(second.ok, true);
+  assert.equal(second.alreadyEnabled, true);
+  assert.equal(
+    adapterCalls.filter((call) => call.method === "registerAgent").length,
+    3
+  );
+
+  const reconciled = await publicApi.reconcileInstances(instanceOptions);
+  assert.deepEqual(
+    reconciled.instances.map((instance) => instance.status),
+    ["registered", "registered", "registered"]
+  );
+  const afterReconcile = await reopenedService.listMarketplaceRoles();
+  assert.equal(afterReconcile.roles[0].enabled, true);
+  assert.equal(afterReconcile.roles[0].enablementStatus, "enabled");
 });

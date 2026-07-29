@@ -49,6 +49,9 @@ contextBridge.exposeInMainWorld("openClawInstaller", {
   installMarketplaceRole(roleId) {
     return ipcRenderer.invoke("role-marketplace:install", roleId);
   },
+  enableMarketplaceRole(roleId) {
+    return ipcRenderer.invoke("role-marketplace:enable", roleId);
+  },
   openLogsDirectory() {
     return ipcRenderer.invoke("logs:open");
   },

@@ -64,7 +64,8 @@ const wizardState = {
     roles: [],
     invalidRoleCount: 0,
     message: "",
-    installations: {}
+    installations: {},
+    enablements: {}
   },
   appearanceMode: "system"
 };
@@ -553,43 +554,76 @@ function createMarketplaceStateCard(title, message, state) {
 
 function createMarketplaceRoleCard(role) {
   const installed = role.installed === true;
+  const enabled = role.enabled === true;
   const installation = wizardState.roleMarketplace.installations[role.id] || {
     status: "idle",
     message: ""
   };
+  const enablement = wizardState.roleMarketplace.enablements[role.id] || {
+    status: "idle",
+    message: ""
+  };
   const installing = installation.status === "installing";
-  const buttons = installed
-    ? [{
-        label: "已安装",
-        kind: "secondary",
-        disabled: true
-      }, {
-        label: "角色聊天即将开放",
-        kind: "secondary",
-        disabled: true
-      }]
-    : [{
-        label: installing ? "正在安装…" : "安装角色",
-        kind: "primary",
-        pending: installing,
-        disabled: installing,
-        handler: () => installMarketplaceRole(role.id)
-      }];
+  const enabling = enablement.status === "enabling";
+  let buttons;
+
+  if (!installed) {
+    buttons = [{
+      label: installing ? "正在安装…" : "安装角色",
+      kind: "primary",
+      pending: installing,
+      disabled: installing,
+      handler: () => installMarketplaceRole(role.id)
+    }];
+  } else if (enabled) {
+    buttons = [{
+      label: "已启用",
+      kind: "secondary",
+      disabled: true
+    }, {
+      label: "角色聊天即将开放",
+      kind: "secondary",
+      disabled: true
+    }];
+  } else if (role.enablementStatus === "needs-repair") {
+    buttons = [{
+      label: "需要修复",
+      kind: "secondary",
+      disabled: true
+    }];
+  } else {
+    buttons = [{
+      label: enabling ? "正在启用…" : "启用角色",
+      kind: "primary",
+      pending: enabling,
+      disabled: enabling,
+      handler: () => enableMarketplaceRole(role.id)
+    }, {
+      label: "角色聊天即将开放",
+      kind: "secondary",
+      disabled: true
+    }];
+  }
+
   const card = createDashboardCard({
     title: role.name || role.id,
-    status: installed ? "已安装" : "未安装",
+    status: enabled
+      ? "已启用"
+      : role.enablementStatus === "needs-repair"
+        ? "需要修复"
+        : installed
+          ? "已安装"
+          : "未安装",
     detail: role.description || "暂无角色简介。",
     meta: `版本 ${role.version || "未知"} · 包含 ${role.agentCount} 个 Agent`,
-    state: installed ? "pass" : "neutral",
+    state: enabled ? "pass" : role.enablementStatus === "needs-repair" ? "warning" : "neutral",
     buttons
   });
   card.classList.add("role-marketplace-card");
 
   const status = document.createElement("div");
   status.className = "role-marketplace-install-status";
-  status.textContent = installed
-    ? `已安装版本 ${role.installedVersion || role.version || "未知"}${role.installedAt ? ` · ${formatMarketplaceDate(role.installedAt)}` : ""}`
-    : "尚未安装到本机";
+  status.textContent = getMarketplaceRoleStatusText(role);
   card.appendChild(status);
 
   if (installation.status === "success" || installation.status === "error") {
@@ -599,6 +633,45 @@ function createMarketplaceRoleCard(role) {
     );
     feedback.classList.add("role-marketplace-install-feedback");
     card.appendChild(feedback);
+  }
+
+  if (enablement.status === "success" || enablement.status === "error") {
+    const feedback = createNotice(
+      enablement.message,
+      enablement.status === "success" ? "pass" : "fail"
+    );
+    feedback.classList.add("role-marketplace-enable-feedback");
+    card.appendChild(feedback);
+  }
+
+  if (role.enablementStatus === "needs-repair") {
+    card.appendChild(createNotice(
+      "Agent Instance 存在缺失或配置漂移，请先通过 instances reconcile 核对并修复。",
+      "warning"
+    ));
+  }
+
+  if (Array.isArray(role.instances) && role.instances.length > 0) {
+    const instancesTitle = document.createElement("strong");
+    instancesTitle.className = "role-marketplace-members-title";
+    instancesTitle.textContent = "Agent Instances";
+    card.appendChild(instancesTitle);
+
+    const instances = document.createElement("ul");
+    instances.className = "role-marketplace-instance-list";
+    for (const instance of role.instances) {
+      const item = document.createElement("li");
+      item.className = "role-marketplace-instance";
+
+      const identity = document.createElement("strong");
+      identity.textContent = `${instance.name || instance.roleAgentId} · ${instance.instanceId}`;
+      const instanceStatus = document.createElement("span");
+      instanceStatus.textContent = getMarketplaceInstanceStatus(instance.status);
+
+      item.append(identity, instanceStatus);
+      instances.appendChild(item);
+    }
+    card.appendChild(instances);
   }
 
   const membersTitle = document.createElement("strong");
@@ -623,6 +696,32 @@ function createMarketplaceRoleCard(role) {
   card.appendChild(members);
 
   return card;
+}
+
+function getMarketplaceRoleStatusText(role) {
+  if (!role.installed) {
+    return "尚未安装到本机";
+  }
+  if (role.enabled) {
+    return `已启用 ${role.instanceCount} 个 Agent Instance`;
+  }
+  if (role.enablementStatus === "needs-repair") {
+    return "Agent Instance 状态需要修复";
+  }
+  if (role.enablementStatus === "partial") {
+    return `已注册 ${role.instanceCount} 个 Agent Instance，尚未完整启用`;
+  }
+  return `已安装版本 ${role.installedVersion || role.version || "未知"}${
+    role.installedAt ? ` · ${formatMarketplaceDate(role.installedAt)}` : ""
+  } · 尚未启用`;
+}
+
+function getMarketplaceInstanceStatus(status) {
+  return {
+    registered: "已注册",
+    missing: "OpenClaw 中缺失",
+    drifted: "配置漂移"
+  }[status] || "状态未知";
 }
 
 async function loadMarketplaceRoles() {
@@ -707,6 +806,70 @@ async function installMarketplaceRole(roleId) {
     marketplace.installations[roleId] = {
       status: "error",
       message: "角色安装未完成，请稍后重试。"
+    };
+  } finally {
+    renderRoleMarketplaceIfVisible();
+  }
+}
+
+async function enableMarketplaceRole(roleId) {
+  const marketplace = wizardState.roleMarketplace;
+  const role = marketplace.roles.find((item) => item.id === roleId);
+  const current = marketplace.enablements[roleId];
+
+  if (
+    !role ||
+    !role.installed ||
+    role.enabled === true ||
+    role.enablementStatus === "needs-repair" ||
+    (current && current.status === "enabling")
+  ) {
+    return;
+  }
+
+  marketplace.enablements[roleId] = {
+    status: "enabling",
+    message: ""
+  };
+  renderRoleMarketplaceIfVisible();
+
+  try {
+    if (!window.openClawInstaller || !window.openClawInstaller.enableMarketplaceRole) {
+      throw new Error("角色启用接口不可用。");
+    }
+
+    const result = await window.openClawInstaller.enableMarketplaceRole(roleId);
+    if (result && result.marketplace) {
+      applyMarketplaceResult(result.marketplace);
+    }
+
+    if (!result || result.ok !== true) {
+      marketplace.enablements[roleId] = {
+        status: "error",
+        message: safeMarketplaceMessage(
+          result && result.message,
+          "角色启用未完成，请稍后重试。"
+        )
+      };
+      return;
+    }
+
+    marketplace.enablements[roleId] = {
+      status: "success",
+      message: safeMarketplaceMessage(
+        result.message,
+        result.alreadyEnabled ? "该角色已经启用。" : "角色启用成功。"
+      )
+    };
+
+    const enabledRole = marketplace.roles.find((item) => item.id === roleId);
+    if (!enabledRole || enabledRole.enabled !== true) {
+      await loadMarketplaceRoles();
+    }
+  } catch (error) {
+    marketplace.enablements[roleId] = {
+      status: "error",
+      message: "角色启用未完成，请稍后重试。"
     };
   } finally {
     renderRoleMarketplaceIfVisible();

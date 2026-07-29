@@ -126,6 +126,38 @@ ipcMain.handle("role-marketplace:install", async (event, roleId) => {
   }
 });
 
+ipcMain.handle("role-marketplace:enable", async (event, roleId) => {
+  if (typeof roleId !== "string" || !roleId.trim()) {
+    return {
+      ok: false,
+      roleId: null,
+      installed: false,
+      enabled: false,
+      alreadyEnabled: false,
+      instanceCount: 0,
+      instances: [],
+      message: "角色标识无效，无法启用。",
+      marketplace: null
+    };
+  }
+
+  try {
+    return await roleService.enableMarketplaceRole(roleId.trim());
+  } catch (error) {
+    return {
+      ok: false,
+      roleId: null,
+      installed: false,
+      enabled: false,
+      alreadyEnabled: false,
+      instanceCount: 0,
+      instances: [],
+      message: "角色启用未完成，请稍后重试。",
+      marketplace: null
+    };
+  }
+});
+
 ipcMain.handle("external:open", async (event, url) => {
   const allowedUrls = new Set([
     "https://nodejs.org/zh-cn/download"
