@@ -19,8 +19,8 @@
     "install:openclaw": "node bin/cli.js install",
     "test": "node --test",
     "gui": "electron src/gui/main.js",
-    "pack:mac": "electron-builder --mac --dir",
-    "dist:mac": "electron-builder --mac dmg"
+    "pack:mac": "node scripts/buildMac.js --dir",
+    "dist:mac": "node scripts/buildMac.js --dmg"
   },
   "keywords": [
     "openclaw",
@@ -56,7 +56,8 @@
         "dmg"
       ],
       "category": "public.app-category.developer-tools",
-      "identity": null
+      "identity": "-",
+      "hardenedRuntime": false
     }
   }
 }
