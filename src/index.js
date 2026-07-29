@@ -114,6 +114,41 @@ const {
 } = require("./core/executions/state");
 const { createOpenClawExecutionAdapter } = require("./core/executions/openClawExecutionAdapter");
 const { buildTaskExecutionPrompt } = require("./core/executions/promptBuilder");
+const {
+  archiveConversation,
+  createConversation,
+  inspectConversation,
+  listConversations,
+  listMessages,
+  reconcileConversations,
+  sendMessage
+} = require("./core/conversations/manager");
+const {
+  createEmptyConversationState,
+  getConversationState,
+  listConversationStates,
+  readConversationState,
+  updateConversationState,
+  writeConversationState
+} = require("./core/conversations/state");
+const {
+  createEmptyMessageState,
+  getMessageState,
+  listMessageStates,
+  readMessageState,
+  resolveMessageStatePath,
+  updateMessageState,
+  writeMessageState
+} = require("./core/conversations/messageState");
+const {
+  createOpenClawConversationAdapter
+} = require("./core/conversations/openClawConversationAdapter");
+const {
+  acquireAgentCallLease,
+  clearStaleAgentCallLease,
+  readAgentCallLease,
+  releaseAgentCallLease
+} = require("./core/openclaw-agent/agentCallLease");
 
 module.exports = {
   buildInstallPlan,
@@ -213,5 +248,30 @@ module.exports = {
   retryExecution,
   runTask,
   updateExecutionState,
-  writeExecutionState
+  writeExecutionState,
+  archiveConversation,
+  createConversation,
+  inspectConversation,
+  listConversations,
+  listMessages,
+  reconcileConversations,
+  sendMessage,
+  createEmptyConversationState,
+  getConversationState,
+  listConversationStates,
+  readConversationState,
+  updateConversationState,
+  writeConversationState,
+  createEmptyMessageState,
+  getMessageState,
+  listMessageStates,
+  readMessageState,
+  resolveMessageStatePath,
+  updateMessageState,
+  writeMessageState,
+  createOpenClawConversationAdapter,
+  acquireAgentCallLease,
+  clearStaleAgentCallLease,
+  readAgentCallLease,
+  releaseAgentCallLease
 };

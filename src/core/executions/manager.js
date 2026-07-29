@@ -27,8 +27,18 @@ const {
   releaseExecutionLease,
   withExecutionLocks
 } = require("./locks");
+const {
+  DEFAULT_AGENT_CALL_LEASE_MAX_AGE_MS,
+  DEFAULT_AGENT_CALL_LEASE_PATH,
+  acquireAgentCallLease,
+  clearStaleAgentCallLease,
+  releaseAgentCallLease
+} = require("../openclaw-agent/agentCallLease");
 const { buildTaskExecutionPrompt } = require("./promptBuilder");
 const { createOpenClawExecutionAdapter } = require("./openClawExecutionAdapter");
+const {
+  createSafeError
+} = require("../conversations/security");
 
 const DEFAULT_TIMEOUT_MS = 600000;
 const MAX_SESSION_KEY_LENGTH = 300;
@@ -142,11 +152,30 @@ async function executeTask(taskId, input, options, internal) {
         instructions: input.instructions || ""
       });
       const createdAt = settings.now().toISOString();
-      await settings.leaseStore.acquire(settings.executionLeasePath, {
-        runId,
+      const agentCallLease = {
+        operationId: runId,
+        operationType: "execution",
+        instanceId: context.task.assignedInstanceId,
         pid: process.pid,
         createdAt
-      });
+      };
+      await settings.agentCallLeaseStore.acquire(
+        settings.agentCallLeasePath,
+        agentCallLease
+      );
+      try {
+        await settings.leaseStore.acquire(settings.executionLeasePath, {
+          runId,
+          pid: process.pid,
+          createdAt
+        });
+      } catch (error) {
+        await settings.agentCallLeaseStore.release(
+          settings.agentCallLeasePath,
+          agentCallLease
+        ).catch(() => {});
+        throw error;
+      }
 
       let runCreated = false;
       let spawnObserved = false;
@@ -268,6 +297,10 @@ async function executeTask(taskId, input, options, internal) {
         throw error;
       } finally {
         await settings.leaseStore.release(settings.executionLeasePath, runId).catch(() => {});
+        await settings.agentCallLeaseStore.release(
+          settings.agentCallLeasePath,
+          agentCallLease
+        ).catch(() => {});
       }
     });
   });
@@ -279,6 +312,21 @@ async function reconcileExecutions(options = {}) {
     const leaseResult = await settings.leaseStore.clearStale(settings.executionLeasePath);
     if (leaseResult.active) {
       throw new Error("当前仍有前台 Execution 租约存活，拒绝并发 reconcile。");
+    }
+    let agentCallLeaseResult;
+    try {
+      agentCallLeaseResult =
+        await settings.agentCallLeaseStore.clearStale(
+          settings.agentCallLeasePath
+        );
+    } catch (error) {
+      throw createSafeError(
+        "Agent 调用租约检查失败。",
+        error
+      );
+    }
+    if (agentCallLeaseResult.active) {
+      throw new Error("当前仍有前台 Agent 调用租约存活，拒绝并发 reconcile。");
     }
     const reconciledAt = settings.now().toISOString();
     const interruptedRuns = [];
@@ -323,7 +371,8 @@ async function reconcileExecutions(options = {}) {
       reconciledAt,
       interruptedRuns,
       taskSyncResults: syncResults,
-      staleLeaseRemoved: leaseResult.removed
+      staleLeaseRemoved: leaseResult.removed,
+      staleAgentCallLeaseRemoved: agentCallLeaseResult.removed
     };
   });
 }
@@ -517,9 +566,23 @@ function taskManagerOptions(settings) {
 function resolveSettings(options = {}) {
   const fileSystem = options.fileSystem;
   const now = options.now || (() => new Date());
+  const executionLeasePath = path.resolve(
+    options.executionLeasePath || DEFAULT_EXECUTION_LEASE_PATH
+  );
+  const agentCallLeasePath = path.resolve(
+    options.agentCallLeasePath || (
+      options.executionLeasePath
+        ? path.join(path.dirname(executionLeasePath), "agent-call.lock")
+        : DEFAULT_AGENT_CALL_LEASE_PATH
+    )
+  );
   const executionLeaseMaxAgeMs = options.executionLeaseMaxAgeMs === undefined
     ? DEFAULT_EXECUTION_LEASE_MAX_AGE_MS
     : options.executionLeaseMaxAgeMs;
+  const agentCallLeaseMaxAgeMs =
+    options.agentCallLeaseMaxAgeMs === undefined
+      ? DEFAULT_AGENT_CALL_LEASE_MAX_AGE_MS
+      : options.agentCallLeaseMaxAgeMs;
   const createSessionKey = options.createSessionKey === undefined
     ? defaultCreateSessionKey
     : options.createSessionKey;
@@ -531,7 +594,8 @@ function resolveSettings(options = {}) {
     taskStatePath: path.resolve(options.taskStatePath || DEFAULT_TASK_STATE_PATH),
     instanceStatePath: path.resolve(options.instanceStatePath || DEFAULT_INSTANCE_STATE_PATH),
     executionStatePath: path.resolve(options.executionStatePath || DEFAULT_EXECUTION_STATE_PATH),
-    executionLeasePath: path.resolve(options.executionLeasePath || DEFAULT_EXECUTION_LEASE_PATH),
+    executionLeasePath,
+    agentCallLeasePath,
     now,
     createRunId: options.createRunId || createRunId,
     createSessionKey,
@@ -544,6 +608,19 @@ function resolveSettings(options = {}) {
       spawnImpl: options.spawnImpl,
       maxOutputBytes: options.maxOutputBytes
     }),
+    agentCallLeaseStore: options.agentCallLeaseStore || {
+      acquire: (leasePath, metadata) =>
+        acquireAgentCallLease(leasePath, metadata, { fileSystem }),
+      release: (leasePath, holder) =>
+        releaseAgentCallLease(leasePath, holder, { fileSystem }),
+      clearStale: (leasePath) =>
+        clearStaleAgentCallLease(leasePath, {
+          fileSystem,
+          isProcessAlive: options.isProcessAlive,
+          maxAgeMs: agentCallLeaseMaxAgeMs,
+          now
+        })
+    },
     leaseStore: options.leaseStore || {
       acquire: (leasePath, metadata) => acquireExecutionLease(leasePath, metadata, { fileSystem }),
       release: (leasePath, runId) => releaseExecutionLease(leasePath, runId, { fileSystem }),

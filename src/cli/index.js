@@ -76,6 +76,7 @@ const { parseTeamsCommand } = require("./teamsParser");
 const { parseProjectsCommand } = require("./projectsParser");
 const { parseTasksCommand } = require("./tasksParser");
 const { parseExecutionsCommand } = require("./executionsParser");
+const { parseConversationsCommand } = require("./conversationsParser");
 const {
   formatProjectInspect,
   formatProjectList,
@@ -100,6 +101,27 @@ const {
   retryExecution,
   runTask
 } = require("../core/executions/manager");
+const {
+  archiveConversation,
+  createConversation,
+  inspectConversation,
+  listConversations,
+  listMessages,
+  reconcileConversations,
+  sendMessage
+} = require("../core/conversations/manager");
+const {
+  formatConversationArchived,
+  formatConversationCreated,
+  formatConversationInspect,
+  formatConversationList,
+  formatConversationMessages,
+  formatConversationReconcile,
+  formatConversationSend
+} = require("./presenters/conversationsPresenter");
+const {
+  createSafeError
+} = require("../core/conversations/security");
 
 /**
  * 运行 CLI 命令。
@@ -107,7 +129,7 @@ const {
  * 输出：命令执行结果；help/version 这类展示命令返回 null。
  * 流程：解析命令 -> 合并配置 -> 分发到 doctor/install/help/version。
  */
-async function runCli(args) {
+async function runCli(args, runtimeOptions = {}) {
   // 第一个参数是命令名，其余参数交给 parseOptions 解析为配置覆盖项。
   const [command = "help", ...rest] = args;
   const config = loadConfig(parseOptions(rest));
@@ -367,6 +389,62 @@ async function runCli(args) {
       console.log(formatExecutionReconcile(result));
       return result;
     }
+    case "conversations": {
+      try {
+        const parsed = parseConversationsCommand(rest);
+        if (parsed.subcommand === "list") {
+          const conversations = await listConversations();
+          console.log(formatConversationList(conversations));
+          return conversations;
+        }
+        if (parsed.subcommand === "inspect") {
+          const conversation = await inspectConversation(parsed.conversationId);
+          console.log(formatConversationInspect(conversation));
+          return conversation;
+        }
+        if (parsed.subcommand === "create") {
+          const conversation = await createConversation({
+            conversationId: parsed.conversationId,
+            ...parsed.input
+          });
+          console.log(formatConversationCreated(conversation));
+          return conversation;
+        }
+        if (parsed.subcommand === "send") {
+          const message = parsed.input.stdin
+            ? await (runtimeOptions.readStdin || readStdin)()
+            : parsed.input.message;
+          const result = await sendMessage(parsed.conversationId, { message });
+          console.log(formatConversationSend(result));
+          return result;
+        }
+        if (parsed.subcommand === "messages") {
+          const messages = await listMessages(
+            parsed.conversationId,
+            parsed.filters
+          );
+          console.log(formatConversationMessages(messages));
+          return messages;
+        }
+        if (parsed.subcommand === "archive") {
+          const conversation = await archiveConversation(
+            parsed.conversationId,
+            parsed.input
+          );
+          console.log(formatConversationArchived(conversation));
+          return conversation;
+        }
+        const result = await reconcileConversations();
+        console.log(formatConversationReconcile(result));
+        return result;
+      } catch (error) {
+        throw createSafeError(
+          error && error.message,
+          error,
+          { fallback: "Conversation 命令执行失败。" }
+        );
+      }
+    }
     case "help":
     case "--help":
     case "-h":
@@ -381,6 +459,14 @@ async function runCli(args) {
       // 未知命令直接抛错，由 bin/cli.js 的统一错误处理负责打印。
       throw new Error(`未知命令：${command}\n请运行 "openclaw-installer help" 查看用法说明。`);
   }
+}
+
+async function readStdin() {
+  const chunks = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 /**
