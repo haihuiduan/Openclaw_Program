@@ -2,6 +2,7 @@
 const publicApi = require("../../index");
 
 const SAFE_ERROR_MESSAGE = "角色列表暂时无法加载，请稍后重试。";
+const SAFE_MY_ROLES_ERROR_MESSAGE = "我的角色暂时无法加载，请稍后重试。";
 const SAFE_INSTALL_ERROR_MESSAGE = "角色安装未完成，请稍后重试。";
 const SAFE_ENABLE_ERROR_MESSAGE = "角色启用未完成，请稍后重试。";
 const ROLE_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -45,6 +46,34 @@ function createRoleService(api = publicApi, options = {}) {
           roles: [],
           invalidRoleCount: 0,
           message: SAFE_ERROR_MESSAGE
+        };
+      }
+    },
+
+    async listMyRoles() {
+      try {
+        const marketplace = await service.listMarketplaceRoles();
+        if (!marketplace || marketplace.ok !== true) {
+          return {
+            ok: false,
+            roles: [],
+            message: SAFE_MY_ROLES_ERROR_MESSAGE
+          };
+        }
+
+        return {
+          ok: true,
+          roles: marketplace.roles
+            .filter((role) => role.installed === true)
+            .map(toMyRole)
+            .sort((left, right) => left.roleId.localeCompare(right.roleId)),
+          message: ""
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          roles: [],
+          message: SAFE_MY_ROLES_ERROR_MESSAGE
         };
       }
     },
@@ -196,6 +225,43 @@ function createRoleService(api = publicApi, options = {}) {
   return service;
 }
 
+function toMyRole(role) {
+  const agentDescriptions = new Map(
+    (Array.isArray(role.agents) ? role.agents : [])
+      .map((agent) => [agent.id, safeText(agent.description)])
+  );
+  const instances = (Array.isArray(role.instances) ? role.instances : [])
+    .map((instance) => {
+      const status = normalizeInstanceStatus(instance.status);
+      return {
+        instanceId: safeText(instance.instanceId),
+        roleAgentId: safeText(instance.roleAgentId),
+        name: safeText(instance.name),
+        description: agentDescriptions.get(instance.roleAgentId) || "",
+        status,
+        available: role.enabled === true && status === "registered"
+      };
+    })
+    .sort((left, right) => left.instanceId.localeCompare(right.instanceId));
+
+  return {
+    roleId: safeText(role.id),
+    name: safeText(role.name),
+    version: safeText(role.installedVersion || role.version),
+    description: safeText(role.description),
+    enabled: role.enabled === true,
+    status: safeMyRoleStatus(role.enablementStatus),
+    instanceCount: instances.filter((instance) => instance.status === "registered").length,
+    instances
+  };
+}
+
+function safeMyRoleStatus(value) {
+  return ["enabled", "not-enabled", "partial", "needs-repair"].includes(value)
+    ? value
+    : "not-enabled";
+}
+
 function toMarketplaceRole(role, installedRole, instanceRecords) {
   const installed = Boolean(installedRole);
   const agentNames = new Map(
@@ -219,7 +285,7 @@ function toMarketplaceRole(role, installedRole, instanceRecords) {
   const registeredInstanceCount = registeredAgentIds.size;
   const expectedAgentIds = [...agentNames.keys()];
   const hasUnhealthyInstance = instances.some((instance) => (
-    instance.status === "missing" || instance.status === "drifted"
+    instance.status !== "registered"
   ));
   const enabled = Boolean(
     installed &&
@@ -416,5 +482,6 @@ module.exports = {
   createRoleService,
   enableMarketplaceRole: roleService.enableMarketplaceRole,
   installMarketplaceRole: roleService.installMarketplaceRole,
+  listMyRoles: roleService.listMyRoles,
   listMarketplaceRoles: roleService.listMarketplaceRoles
 };

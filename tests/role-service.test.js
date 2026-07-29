@@ -753,3 +753,150 @@ test("真实公共 API 通过临时 State 和 Mock Adapter 完成三 Instance �
   assert.equal(afterReconcile.roles[0].enabled, true);
   assert.equal(afterReconcile.roles[0].enablementStatus, "enabled");
 });
+
+test("我的角色只返回已经安装的角色", async () => {
+  const service = createRoleService(createApi());
+
+  const result = await service.listMyRoles();
+
+  assert.deepEqual(result, {
+    ok: true,
+    roles: [],
+    message: ""
+  });
+});
+
+test("我的角色将已安装但未启用角色转换为安全 DTO", async () => {
+  const service = createRoleService(createApi({
+    async listInstalledRoles() {
+      return [createInstalledRoleRecord()];
+    }
+  }));
+
+  const result = await service.listMyRoles();
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.roles, [{
+    roleId: "cross-border-team",
+    name: "跨境电商运营团队",
+    version: "1.0.0",
+    description: "三个 Agent 组成的本地角色包。",
+    enabled: false,
+    status: "not-enabled",
+    instanceCount: 0,
+    instances: []
+  }]);
+});
+
+test("我的角色返回真实已启用 Instance 且只保留可聊天安全字段", async () => {
+  const instances = [
+    createSafeInstance("researcher"),
+    createSafeInstance("creator"),
+    createSafeInstance("manager")
+  ];
+  const service = createRoleService(createApi({
+    async listInstalledRoles() {
+      return [createInstalledRoleRecord()];
+    },
+    async listInstances() {
+      return instances;
+    }
+  }));
+
+  const result = await service.listMyRoles();
+  const role = result.roles[0];
+  const serialized = JSON.stringify(result);
+
+  assert.equal(role.enabled, true);
+  assert.equal(role.status, "enabled");
+  assert.equal(role.instanceCount, 3);
+  assert.deepEqual(role.instances.map((instance) => instance.instanceId), [
+    "cross-border-team-creator",
+    "cross-border-team-manager",
+    "cross-border-team-researcher"
+  ]);
+  assert.deepEqual(role.instances.map((instance) => instance.available), [
+    true,
+    true,
+    true
+  ]);
+  assert.equal(role.instances[0].description, "生成可审核文案。");
+  assert.doesNotMatch(
+    serialized,
+    /workspacePath|agentDir|statePath|manifestPath|installDirectory|\/private\//
+  );
+});
+
+test("missing 和 drifted Instance 在我的角色中标记为需要修复且不可聊天", async () => {
+  const instances = [
+    createSafeInstance("manager", "registered"),
+    createSafeInstance("researcher", "missing"),
+    createSafeInstance("creator", "drifted")
+  ];
+  const service = createRoleService(createApi({
+    async listInstalledRoles() {
+      return [createInstalledRoleRecord()];
+    },
+    async listInstances() {
+      return instances;
+    }
+  }));
+
+  const result = await service.listMyRoles();
+  const role = result.roles[0];
+
+  assert.equal(role.enabled, false);
+  assert.equal(role.status, "needs-repair");
+  assert.equal(role.instanceCount, 1);
+  assert.equal(
+    role.instances.find((instance) => instance.status === "registered").available,
+    false
+  );
+  assert.equal(
+    role.instances.find((instance) => instance.status === "missing").available,
+    false
+  );
+  assert.equal(
+    role.instances.find((instance) => instance.status === "drifted").available,
+    false
+  );
+});
+
+test("未知异常 Instance 在我的角色中同样标记为需要修复且不可聊天", async () => {
+  const service = createRoleService(createApi({
+    async listInstalledRoles() {
+      return [createInstalledRoleRecord()];
+    },
+    async listInstances() {
+      return [createSafeInstance("manager", "unexpected")];
+    }
+  }));
+
+  const result = await service.listMyRoles();
+  const role = result.roles[0];
+
+  assert.equal(role.enabled, false);
+  assert.equal(role.status, "needs-repair");
+  assert.equal(role.instances[0].status, "unknown");
+  assert.equal(role.instances[0].available, false);
+});
+
+test("我的角色错误使用固定安全摘要且不泄露原始 Error 或路径", async () => {
+  const error = new Error("读取失败：/Users/example/private/instances.json");
+  error.stack = "secret stack /private/internal/state.js";
+  const service = createRoleService(createApi({
+    async scanRoleRegistry() {
+      throw error;
+    }
+  }));
+
+  const result = await service.listMyRoles();
+  const serialized = JSON.stringify(result);
+
+  assert.deepEqual(result, {
+    ok: false,
+    roles: [],
+    message: "我的角色暂时无法加载，请稍后重试。"
+  });
+  assert.doesNotMatch(serialized, /Users|private|secret stack|读取失败|Error/);
+});

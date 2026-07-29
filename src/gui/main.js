@@ -100,6 +100,18 @@ ipcMain.handle("role-marketplace:list", async () => {
   }
 });
 
+ipcMain.handle("my-roles:list", async () => {
+  try {
+    return await roleService.listMyRoles();
+  } catch (error) {
+    return {
+      ok: false,
+      roles: [],
+      message: "我的角色暂时无法加载，请稍后重试。"
+    };
+  }
+});
+
 ipcMain.handle("role-marketplace:install", async (event, roleId) => {
   if (typeof roleId !== "string" || !roleId.trim()) {
     return {

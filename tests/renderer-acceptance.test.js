@@ -481,3 +481,121 @@ test("角色市场 renderer 不直接访问 Node.js、文件系统或子进程",
   assert.doesNotMatch(renderer, /\bnode:fs\b|\bchild_process\b|\bspawn\s*\(/);
   assert.doesNotMatch(renderer, /\bprocess\.(?:env|cwd|platform|arch)\b/);
 });
+
+test("左侧导航包含我的角色入口并分发我的角色和单 Agent 聊天页面", () => {
+  const html = readFile("src/gui/renderer/index.html");
+  const renderer = readRenderer();
+  const renderPage = getFunctionBlock(renderer, "renderPage");
+
+  assert.match(html, /data-page="my-roles">我的角色/);
+  assert.match(renderPage, /currentPage === "my-roles"/);
+  assert.match(renderPage, /renderMyRolesPage\(\)/);
+  assert.match(renderPage, /currentPage === "agent-chat"/);
+  assert.match(renderPage, /renderAgentChatPage\(\)/);
+});
+
+test("我的角色通过无参数 preload 白名单调用只读 IPC", () => {
+  const renderer = readRenderer();
+  const preload = readFile("src/gui/preload.js");
+  const main = readFile("src/gui/main.js");
+  const loader = getFunctionBlock(renderer, "loadMyRoles");
+
+  assert.match(loader, /window\.openClawInstaller\.listMyRoles\(\)/);
+  assert.doesNotMatch(loader, /statePath|workspacePath|agentDir|options/);
+  assert.match(preload, /listMyRoles\(\)/);
+  assert.match(preload, /invoke\("my-roles:list"\)/);
+  assert.doesNotMatch(preload, /my-roles:list",/);
+  assert.match(main, /ipcMain\.handle\("my-roles:list", async \(\)/);
+  assert.match(main, /roleService\.listMyRoles\(\)/);
+});
+
+test("我的角色覆盖 idle、loading、error、empty 和 ready 状态并支持刷新", () => {
+  const renderer = readRenderer();
+  const page = getFunctionBlock(renderer, "renderMyRolesPage");
+  const loader = getFunctionBlock(renderer, "loadMyRoles");
+  const applyResult = getFunctionBlock(renderer, "applyMyRolesResult");
+
+  assert.match(renderer, /myRoles: \{\s*status: "idle"/);
+  assert.match(loader, /myRoles\.status = "loading"/);
+  assert.match(loader, /myRoles\.status = "error"/);
+  assert.match(applyResult, /myRoles\.status = "ready"/);
+  assert.match(page, /myRoles\.roles\.length === 0/);
+  assert.match(page, /还没有安装角色/);
+  assert.match(page, /刷新我的角色/);
+  assert.match(page, /重新加载/);
+  assert.match(page, /前往角色市场/);
+});
+
+test("我的角色按启用和 Instance 健康状态控制聊天入口", () => {
+  const renderer = readRenderer();
+  const roleCard = getFunctionBlock(renderer, "createMyRoleCard");
+  const instanceRow = getFunctionBlock(renderer, "createMyRoleInstance");
+  const openChat = getFunctionBlock(renderer, "openAgentChat");
+
+  assert.match(roleCard, /尚未启用/);
+  assert.match(roleCard, /前往角色市场启用/);
+  assert.match(roleCard, /需要修复/);
+  assert.match(instanceRow, /instance\.available \? "进入聊天"/);
+  assert.match(instanceRow, /"需要修复"/);
+  assert.match(instanceRow, /chatButton\.disabled = instance\.available !== true/);
+  assert.match(openChat, /role\.enabled !== true/);
+  assert.match(openChat, /instance\.available !== true/);
+  assert.match(openChat, /instance\.status !== "registered"/);
+});
+
+test("单 Agent 聊天页只保存安全选择字段并提供禁用发送界面", () => {
+  const renderer = readRenderer();
+  const page = getFunctionBlock(renderer, "renderAgentChatPage");
+  const openChat = getFunctionBlock(renderer, "openAgentChat");
+
+  assert.match(page, /返回我的角色/);
+  assert.match(page, /agent-chat-messages/);
+  assert.match(page, /agent-chat-input/);
+  assert.match(page, /真实对话能力正在接入中/);
+  assert.match(page, /当前不会发送或保存/);
+  assert.match(page, /sendButton\.disabled = true/);
+  assert.match(page, /发送功能接入中/);
+  assert.doesNotMatch(page, /addEventListener\("click"|sendMessage|execute|openclaw agent/i);
+
+  for (const field of [
+    "roleId",
+    "roleName",
+    "instanceId",
+    "roleAgentId",
+    "name",
+    "description",
+    "status"
+  ]) {
+    assert.match(openChat, new RegExp(`${field}:`));
+  }
+  assert.doesNotMatch(
+    openChat,
+    /workspacePath|agentDir|sessionKey|openClawSessionId|openClawRunId|statePath/
+  );
+});
+
+test("聊天预览不调用 Conversation、Execution 或伪造 Assistant 回复", () => {
+  const renderer = readRenderer();
+  const page = getFunctionBlock(renderer, "renderAgentChatPage");
+  const openChat = getFunctionBlock(renderer, "openAgentChat");
+
+  assert.doesNotMatch(
+    `${page}\n${openChat}`,
+    /sendMessage|Conversation|conversation:|Execution|execution:|runTask|assistant/i
+  );
+  assert.doesNotMatch(`${page}\n${openChat}`, /openClawInstaller\.[A-Za-z]*send/i);
+  assert.doesNotMatch(`${page}\n${openChat}`, /messages?\.push|chatHistory|messageHistory/);
+});
+
+test("我的角色和聊天样式支持深色模式、窄窗口与消息区滚动", () => {
+  const css = readFile("src/gui/renderer/style.css");
+
+  assert.match(css, /\.my-roles-grid/);
+  assert.match(css, /\.my-role-instance-list/);
+  assert.match(css, /\.agent-chat-shell/);
+  assert.match(css, /\.agent-chat-messages/);
+  assert.match(css, /overflow-y: auto/);
+  assert.match(css, /\.agent-chat-composer/);
+  assert.match(css, /body\[data-theme="dark"\].*agent-chat/s);
+  assert.match(css, /@media \(max-width: 820px\)/);
+});
