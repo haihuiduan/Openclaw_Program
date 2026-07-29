@@ -64,6 +64,10 @@ function loadCliWithMocks(mocks = {}) {
     mockModule("src/core/executions/manager.js", mocks.executions);
   }
 
+  if (mocks.conversations) {
+    mockModule("src/core/conversations/manager.js", mocks.conversations);
+  }
+
   return require(projectPath("src/cli/index.js"));
 }
 
@@ -883,4 +887,222 @@ test("help 明确列出 Execution 首版命令和安全边界", async () => {
   ]) assert.match(output, new RegExp(command.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(output, /不支持安全远端 cancel、pause、后台调度或 checkpoint 恢复/);
   assert.doesNotMatch(output, /executions cancel|executions pause|executions follow/);
+});
+
+function conversationCliRecord(overrides = {}) {
+  return {
+    conversationId: "test-chat",
+    title: "测试对话",
+    instanceId: "test-role-worker",
+    projectId: null,
+    status: "active",
+    hasOpenClawSession: true,
+    messageCount: 2,
+    lastMessageAt: "2026-07-23T01:00:00.000Z",
+    canSend: true,
+    issues: [],
+    createdAt: "2026-07-23T00:00:00.000Z",
+    updatedAt: "2026-07-23T01:00:00.000Z",
+    archivedAt: null,
+    ...overrides
+  };
+}
+
+function conversationCliMocks(calls) {
+  const conversation = conversationCliRecord();
+  const messages = [{
+    messageId: "msg-00000000-0000-4000-8000-000000000001",
+    turnId: "turn-00000000-0000-4000-8000-000000000001",
+    conversationId: "test-chat",
+    sequence: 1,
+    role: "user",
+    status: "completed",
+    content: "安全消息",
+    errorSummary: null,
+    createdAt: "2026-07-23T01:00:00.000Z"
+  }];
+  return {
+    listConversations: async () => {
+      calls.push(["list"]);
+      return [conversation];
+    },
+    inspectConversation: async (id) => {
+      calls.push(["inspect", id]);
+      return conversation;
+    },
+    createConversation: async (input) => {
+      calls.push(["create", input]);
+      return conversation;
+    },
+    sendMessage: async (id, input) => {
+      calls.push(["send", id, input]);
+      return {
+        userMessage: messages[0],
+        assistantMessage: {
+          ...messages[0],
+          messageId: "msg-00000000-0000-4000-8000-000000000002",
+          sequence: 2,
+          role: "assistant",
+          content: "安全回复"
+        },
+        conversation
+      };
+    },
+    listMessages: async (id, filters) => {
+      calls.push(["messages", id, filters]);
+      return messages;
+    },
+    archiveConversation: async (id, input) => {
+      calls.push(["archive", id, input]);
+      return { ...conversation, status: "archived" };
+    },
+    reconcileConversations: async () => {
+      calls.push(["reconcile"]);
+      return {
+        reconciledAt: "2026-07-23T02:00:00.000Z",
+        interruptedMessageIds: [],
+        repairedConversationIds: [],
+        staleLeaseRemoved: false,
+        activeAgentCall: false
+      };
+    }
+  };
+}
+
+test("conversations CLI 分发 list、inspect、create、messages、archive 和 reconcile", async () => {
+  const calls = [];
+  const { runCli } = loadCliWithMocks({
+    conversations: conversationCliMocks(calls)
+  });
+  await captureConsole(() => runCli(["conversations", "list"]));
+  const inspected = await captureConsole(() => runCli([
+    "conversations", "inspect", "test-chat"
+  ]));
+  await captureConsole(() => runCli([
+    "conversations", "create", "test-chat",
+    "--instance", "test-role-worker",
+    "--title", "测试对话",
+    "--project", "test-project"
+  ]));
+  const listedMessages = await captureConsole(() => runCli([
+    "conversations", "messages", "test-chat",
+    "--limit", "10", "--before-sequence", "20"
+  ]));
+  await captureConsole(() => runCli([
+    "conversations", "archive", "test-chat", "--confirm"
+  ]));
+  await captureConsole(() => runCli(["conversations", "reconcile"]));
+  assert.deepEqual(calls, [
+    ["list"],
+    ["inspect", "test-chat"],
+    ["create", {
+      conversationId: "test-chat",
+      instanceId: "test-role-worker",
+      title: "测试对话",
+      projectId: "test-project"
+    }],
+    ["messages", "test-chat", { limit: 10, beforeSequence: 20 }],
+    ["archive", "test-chat", { confirm: true }],
+    ["reconcile"]
+  ]);
+  assert.match(inspected.output, /OpenClaw Session：已建立/);
+  assert.doesNotMatch(inspected.output, /session-id|session-key|安全消息/);
+  assert.match(listedMessages.output, /安全消息/);
+});
+
+test("conversations send 支持 message/stdin 互斥输入并只调用 Manager", async () => {
+  const calls = [];
+  const { runCli } = loadCliWithMocks({
+    conversations: conversationCliMocks(calls)
+  });
+  const direct = await captureConsole(() => runCli([
+    "conversations", "send", "test-chat", "--message", "直接消息"
+  ]));
+  await captureConsole(() => runCli(
+    ["conversations", "send", "test-chat", "--stdin"],
+    { readStdin: async () => "标准输入消息\n" }
+  ));
+  assert.deepEqual(calls, [
+    ["send", "test-chat", { message: "直接消息" }],
+    ["send", "test-chat", { message: "标准输入消息\n" }]
+  ]);
+  assert.match(direct.output, /安全回复/);
+});
+
+test("conversations CLI 拒绝缺失、冲突、分页和未支持参数", async () => {
+  const { runCli } = loadCliWithMocks();
+  await assert.rejects(
+    () => runCli(["conversations", "create", "test-chat"]),
+    /--instance/
+  );
+  await assert.rejects(
+    () => runCli(["conversations", "send", "test-chat"]),
+    /必须且只能/
+  );
+  await assert.rejects(
+    () => runCli([
+      "conversations", "send", "test-chat",
+      "--message", "文本", "--stdin"
+    ]),
+    /必须且只能/
+  );
+  await assert.rejects(
+    () => runCli([
+      "conversations", "send", "test-chat", "--message-file", "input.txt"
+    ]),
+    /不支持 --message-file/
+  );
+  await assert.rejects(
+    () => runCli([
+      "conversations", "messages", "test-chat", "--limit", "101"
+    ]),
+    /1 到 100/
+  );
+  await assert.rejects(
+    () => runCli(["conversations", "archive", "test-chat"]),
+    /必须提供 --confirm/
+  );
+  for (const subcommand of ["retry", "delete", "rename", "unarchive"]) {
+    await assert.rejects(
+      () => runCli(["conversations", subcommand, "test-chat"]),
+      /当前不支持 retry、delete、rename、unarchive/
+    );
+  }
+  await assert.rejects(
+    () => runCli(["conversations", "list", "--json"]),
+    /不接受额外参数/
+  );
+});
+
+test("conversations 参数错误通过统一 CLI 入口返回非零退出码", () => {
+  const result = spawnSync(process.execPath, [
+    projectPath("bin/cli.js"), "conversations", "archive", "test-chat"
+  ], { encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /必须提供 --confirm/);
+  assert.doesNotMatch(result.stderr, /openclaw agent/);
+});
+
+test("help 列出 Conversation Core 首版命令且不宣称未支持能力", async () => {
+  const { runCli } = loadCliWithMocks();
+  const { output } = await captureConsole(() => runCli(["help"]));
+  for (const command of [
+    "conversations list",
+    "conversations inspect",
+    "conversations create",
+    "conversations send",
+    "conversations messages",
+    "conversations archive",
+    "conversations reconcile"
+  ]) {
+    assert.match(
+      output,
+      new RegExp(command.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    );
+  }
+  assert.match(output, /不支持群聊、retry、delete、rename、unarchive、流式或后台发送/);
+  assert.doesNotMatch(
+    output,
+    /conversations (retry|delete|rename|unarchive)|conversations stream/
+  );
 });

@@ -63,6 +63,15 @@ function printHelp() {
   openclaw-installer executions retry <run-id> --confirm 显式创建新的重试 Run
   openclaw-installer executions reconcile 标记遗留 Run 并补做 Task 同步
   Phase 6 首版不支持安全远端 cancel、pause、后台调度或 checkpoint 恢复
+  openclaw-installer conversations list 列出 Conversation（不显示正文或 Session 标识）
+  openclaw-installer conversations inspect <id> 查看 Conversation 元数据
+  openclaw-installer conversations create <id> --instance <instance-id> [--title <标题>] [--project <project-id>]
+  openclaw-installer conversations send <id> --message <文本> 前台发送一条消息
+  openclaw-installer conversations send <id> --stdin 从标准输入读取并发送消息
+  openclaw-installer conversations messages <id> [--limit <1-100>] [--before-sequence <n>]
+  openclaw-installer conversations archive <id> --confirm 归档并设为只读
+  openclaw-installer conversations reconcile 修复遗留本地消息状态认知
+  Phase 7A 首版不支持群聊、retry、delete、rename、unarchive、流式或后台发送
   openclaw-installer help                查看帮助信息
   openclaw-installer version             查看当前安装助手版本
 
