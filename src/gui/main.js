@@ -3,6 +3,7 @@ const path = require("node:path");
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const { loadConfig } = require("../config");
 const installerService = require("./services/installerService");
+const roleService = require("./services/roleService");
 const { getProviderApiKeyGuidance } = require("./providerApiKeyGuidance");
 
 let mainWindow = null;
@@ -84,6 +85,19 @@ ipcMain.handle("dashboard:open", async () => {
 
 ipcMain.handle("dashboard:stop", async () => {
   return installerService.stopDashboard();
+});
+
+ipcMain.handle("role-marketplace:list", async () => {
+  try {
+    return await roleService.listMarketplaceRoles();
+  } catch (error) {
+    return {
+      ok: false,
+      roles: [],
+      invalidRoleCount: 0,
+      message: "角色列表暂时无法加载，请稍后重试。"
+    };
+  }
 });
 
 ipcMain.handle("external:open", async (event, url) => {

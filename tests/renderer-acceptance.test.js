@@ -319,3 +319,66 @@ test("运行诊断 loading 样式支持 reduced motion", () => {
   assert.match(css, /prefers-reduced-motion: reduce/);
   assert.match(css, /animation: none/);
 });
+
+test("左侧导航包含角色市场入口并沿用 data-page 页面切换", () => {
+  const html = readFile("src/gui/renderer/index.html");
+  const renderer = readRenderer();
+  const renderPage = getFunctionBlock(renderer, "renderPage");
+
+  assert.match(html, /data-page="role-marketplace">角色市场/);
+  assert.match(renderPage, /currentPage === "role-marketplace"/);
+  assert.match(renderPage, /renderRoleMarketplacePage\(\)/);
+});
+
+test("角色市场通过 preload 白名单调用只读 IPC", () => {
+  const renderer = readRenderer();
+  const preload = readFile("src/gui/preload.js");
+  const main = readFile("src/gui/main.js");
+  const loadMarketplaceRoles = getFunctionBlock(renderer, "loadMarketplaceRoles");
+
+  assert.match(loadMarketplaceRoles, /window\.openClawInstaller\.listMarketplaceRoles\(\)/);
+  assert.match(preload, /listMarketplaceRoles\(\)/);
+  assert.match(preload, /invoke\("role-marketplace:list"\)/);
+  assert.match(main, /require\("\.\/services\/roleService"\)/);
+  assert.match(main, /ipcMain\.handle\("role-marketplace:list"/);
+  assert.match(main, /roleService\.listMarketplaceRoles\(\)/);
+});
+
+test("角色市场覆盖 idle、loading、error、ready 和空列表状态并支持刷新", () => {
+  const renderer = readRenderer();
+  const page = getFunctionBlock(renderer, "renderRoleMarketplacePage");
+  const loader = getFunctionBlock(renderer, "loadMarketplaceRoles");
+
+  assert.match(renderer, /status: "idle"/);
+  assert.match(loader, /marketplace\.status = "loading"/);
+  assert.match(loader, /marketplace\.status = "ready"/);
+  assert.match(loader, /marketplace\.status = "error"/);
+  assert.match(page, /marketplace\.roles\.length === 0/);
+  assert.match(page, /暂无可用角色/);
+  assert.match(page, /刷新角色列表/);
+  assert.match(page, /重新加载/);
+});
+
+test("角色卡只展示真实成员信息，不提供安装卸载或角色定向聊天", () => {
+  const renderer = readRenderer();
+  const roleCard = getFunctionBlock(renderer, "createMarketplaceRoleCard");
+  const marketplacePage = getFunctionBlock(renderer, "renderRoleMarketplacePage");
+
+  assert.match(roleCard, /role\.agentCount/);
+  assert.match(roleCard, /role\.agents/);
+  assert.match(roleCard, /安装功能即将开放/);
+  assert.match(roleCard, /角色聊天即将开放/);
+  assert.doesNotMatch(renderer, /与该角色聊天/);
+  assert.doesNotMatch(renderer, /installRole|removeRole/);
+  assert.match(marketplacePage, /打开 OpenClaw 控制台/);
+  assert.match(marketplacePage, /自行选择 Agent/);
+  assert.match(marketplacePage, /openDashboard/);
+});
+
+test("角色市场 renderer 不直接访问 Node.js、文件系统或子进程", () => {
+  const renderer = readRenderer();
+
+  assert.doesNotMatch(renderer, /\brequire\s*\(/);
+  assert.doesNotMatch(renderer, /\bnode:fs\b|\bchild_process\b|\bspawn\s*\(/);
+  assert.doesNotMatch(renderer, /\bprocess\.(?:env|cwd|platform|arch)\b/);
+});

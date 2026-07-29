@@ -59,6 +59,12 @@ const wizardState = {
   troubleshootDiagnosticsBusy: false,
   troubleshootDiagnosticsStatus: "idle",
   troubleshootDiagnosticsMessage: "",
+  roleMarketplace: {
+    status: "idle",
+    roles: [],
+    invalidRoleCount: 0,
+    message: ""
+  },
   appearanceMode: "system"
 };
 
@@ -352,6 +358,12 @@ function updateWizardHeading() {
     return;
   }
 
+  if (wizardState.currentPage === "role-marketplace") {
+    wizardTitle.textContent = "角色市场";
+    wizardDescription.textContent = "浏览工具箱内置的本地角色包，并查看当前安装状态。";
+    return;
+  }
+
   if (wizardState.currentPage === "settings") {
     wizardTitle.textContent = "设置";
     wizardDescription.textContent = "更多偏好设置将在后续版本中提供。";
@@ -443,12 +455,204 @@ function renderPage() {
     return;
   }
 
+  if (wizardState.currentPage === "role-marketplace") {
+    renderRoleMarketplacePage();
+    return;
+  }
+
   if (wizardState.currentPage === "settings") {
     renderSettingsPage();
     return;
   }
 
   renderWelcomeStep();
+}
+
+function renderRoleMarketplacePage() {
+  const marketplace = wizardState.roleMarketplace;
+  const page = document.createElement("div");
+  page.className = "toolbox-page-stack role-marketplace-page";
+
+  const header = createCard(
+    "本地角色市场",
+    "这里展示工具箱随应用提供的角色包和本机安装状态。本预览版暂不提供安装、卸载或角色定向聊天。"
+  );
+  header.classList.add("toolbox-page-card", "role-marketplace-header");
+
+  const actions = document.createElement("div");
+  actions.className = "toolbox-card-actions role-marketplace-actions";
+  const refreshButton = createButton("刷新角色列表", loadMarketplaceRoles, "secondary");
+  refreshButton.disabled = marketplace.status === "loading";
+  actions.appendChild(refreshButton);
+  actions.appendChild(createButton("打开 OpenClaw 控制台", openDashboard, "primary"));
+  header.appendChild(actions);
+  header.appendChild(createNotice(
+    "控制台会在浏览器中打开，需要你自行选择 Agent；这里不是角色定向聊天入口。",
+    "info"
+  ));
+  page.appendChild(header);
+
+  if (marketplace.status === "idle" || marketplace.status === "loading") {
+    page.appendChild(createMarketplaceStateCard(
+      "正在加载角色",
+      "正在读取本地角色包和安装状态，请稍候。",
+      "info"
+    ));
+    wizardCard.appendChild(page);
+    return;
+  }
+
+  if (marketplace.status === "error") {
+    const errorCard = createMarketplaceStateCard(
+      "角色列表加载失败",
+      marketplace.message || "暂时无法读取角色列表，请稍后重试。",
+      "fail"
+    );
+    const retryActions = document.createElement("div");
+    retryActions.className = "toolbox-card-actions";
+    retryActions.appendChild(createButton("重新加载", loadMarketplaceRoles, "primary"));
+    errorCard.appendChild(retryActions);
+    page.appendChild(errorCard);
+    wizardCard.appendChild(page);
+    return;
+  }
+
+  if (marketplace.invalidRoleCount > 0) {
+    page.appendChild(createNotice(
+      `有 ${marketplace.invalidRoleCount} 个无效角色包已被安全忽略，其余角色仍可正常浏览。`,
+      "warning"
+    ));
+  }
+
+  if (marketplace.roles.length === 0) {
+    page.appendChild(createMarketplaceStateCard(
+      "暂无可用角色",
+      "当前没有检测到可展示的本地角色包。",
+      "info"
+    ));
+    wizardCard.appendChild(page);
+    return;
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "role-marketplace-grid";
+  for (const role of marketplace.roles) {
+    grid.appendChild(createMarketplaceRoleCard(role));
+  }
+  page.appendChild(grid);
+  wizardCard.appendChild(page);
+}
+
+function createMarketplaceStateCard(title, message, state) {
+  const card = createCard(title, "");
+  card.classList.add("toolbox-page-card", "role-marketplace-state");
+  card.appendChild(createNotice(message, state));
+  return card;
+}
+
+function createMarketplaceRoleCard(role) {
+  const installed = role.installed === true;
+  const card = createDashboardCard({
+    title: role.name || role.id,
+    status: installed ? "已安装" : "未安装",
+    detail: role.description || "暂无角色简介。",
+    meta: `版本 ${role.version || "未知"} · 包含 ${role.agentCount} 个 Agent`,
+    state: installed ? "pass" : "neutral",
+    buttons: [{
+      label: installed ? "角色聊天即将开放" : "安装功能即将开放",
+      kind: "secondary",
+      disabled: true
+    }]
+  });
+  card.classList.add("role-marketplace-card");
+
+  const status = document.createElement("div");
+  status.className = "role-marketplace-install-status";
+  status.textContent = installed
+    ? `已安装版本 ${role.installedVersion || role.version || "未知"}${role.installedAt ? ` · ${formatMarketplaceDate(role.installedAt)}` : ""}`
+    : "尚未安装到本机";
+  card.appendChild(status);
+
+  const membersTitle = document.createElement("strong");
+  membersTitle.className = "role-marketplace-members-title";
+  membersTitle.textContent = "团队成员";
+  card.appendChild(membersTitle);
+
+  const members = document.createElement("ul");
+  members.className = "role-marketplace-agent-list";
+  for (const agent of role.agents) {
+    const item = document.createElement("li");
+    item.className = "role-marketplace-agent";
+
+    const name = document.createElement("strong");
+    name.textContent = agent.name || agent.id;
+    const description = document.createElement("span");
+    description.textContent = agent.description || "暂无成员简介。";
+
+    item.append(name, description);
+    members.appendChild(item);
+  }
+  card.appendChild(members);
+
+  return card;
+}
+
+async function loadMarketplaceRoles() {
+  const marketplace = wizardState.roleMarketplace;
+
+  if (marketplace.status === "loading") {
+    return;
+  }
+
+  marketplace.status = "loading";
+  marketplace.message = "";
+  renderRoleMarketplaceIfVisible();
+
+  try {
+    if (!window.openClawInstaller || !window.openClawInstaller.listMarketplaceRoles) {
+      throw new Error("角色市场接口不可用。");
+    }
+
+    const result = await window.openClawInstaller.listMarketplaceRoles();
+    if (!result || result.ok !== true || !Array.isArray(result.roles)) {
+      throw new Error(result && result.message ? result.message : "角色列表返回格式无效。");
+    }
+
+    marketplace.status = "ready";
+    marketplace.roles = result.roles;
+    marketplace.invalidRoleCount = Number.isInteger(result.invalidRoleCount)
+      ? result.invalidRoleCount
+      : 0;
+    marketplace.message = "";
+  } catch (error) {
+    marketplace.status = "error";
+    marketplace.roles = [];
+    marketplace.invalidRoleCount = 0;
+    marketplace.message = "暂时无法读取角色列表，请稍后重试。";
+  } finally {
+    renderRoleMarketplaceIfVisible();
+  }
+}
+
+function renderRoleMarketplaceIfVisible() {
+  if (wizardState.currentPage === "role-marketplace") {
+    renderWizard();
+  }
+}
+
+function formatMarketplaceDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "安装时间未知";
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
 }
 
 function renderStandaloneConfigurePage() {
@@ -1065,7 +1269,7 @@ function createDashboardCard(options) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "dashboard-card-button dashboard-card-button-" + (action.kind || "secondary");
-      button.disabled = Boolean(action.pending);
+      button.disabled = Boolean(action.pending || action.disabled);
 
       if (action.pending) {
         const spinner = document.createElement("span");
@@ -3030,6 +3234,13 @@ function navigateToPage(page, options = {}) {
   closeAboutMenu();
   closeAppearanceMenu();
   renderWizard();
+
+  if (
+    wizardState.currentPage === "role-marketplace" &&
+    wizardState.roleMarketplace.status === "idle"
+  ) {
+    loadMarketplaceRoles();
+  }
 }
 
 function goToStep(index) {

@@ -43,6 +43,9 @@ contextBridge.exposeInMainWorld("openClawInstaller", {
   stopDashboard() {
     return ipcRenderer.invoke("dashboard:stop");
   },
+  listMarketplaceRoles() {
+    return ipcRenderer.invoke("role-marketplace:list");
+  },
   openLogsDirectory() {
     return ipcRenderer.invoke("logs:open");
   },
