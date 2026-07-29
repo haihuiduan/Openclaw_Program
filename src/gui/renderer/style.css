@@ -1811,6 +1811,10 @@ body.is-home-dashboard .app-main {
   font-weight: 750;
 }
 
+.role-marketplace-install-feedback {
+  margin-top: 12px;
+}
+
 .role-marketplace-members-title {
   display: block;
   margin-top: 18px;

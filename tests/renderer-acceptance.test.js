@@ -348,10 +348,11 @@ test("角色市场覆盖 idle、loading、error、ready 和空列表状态并支
   const renderer = readRenderer();
   const page = getFunctionBlock(renderer, "renderRoleMarketplacePage");
   const loader = getFunctionBlock(renderer, "loadMarketplaceRoles");
+  const applyResult = getFunctionBlock(renderer, "applyMarketplaceResult");
 
   assert.match(renderer, /status: "idle"/);
   assert.match(loader, /marketplace\.status = "loading"/);
-  assert.match(loader, /marketplace\.status = "ready"/);
+  assert.match(applyResult, /marketplace\.status = "ready"/);
   assert.match(loader, /marketplace\.status = "error"/);
   assert.match(page, /marketplace\.roles\.length === 0/);
   assert.match(page, /暂无可用角色/);
@@ -359,20 +360,65 @@ test("角色市场覆盖 idle、loading、error、ready 和空列表状态并支
   assert.match(page, /重新加载/);
 });
 
-test("角色卡只展示真实成员信息，不提供安装卸载或角色定向聊天", () => {
+test("角色卡展示真实成员和局部安装入口，但不提供卸载或角色定向聊天", () => {
   const renderer = readRenderer();
   const roleCard = getFunctionBlock(renderer, "createMarketplaceRoleCard");
   const marketplacePage = getFunctionBlock(renderer, "renderRoleMarketplacePage");
 
   assert.match(roleCard, /role\.agentCount/);
   assert.match(roleCard, /role\.agents/);
-  assert.match(roleCard, /安装功能即将开放/);
+  assert.match(roleCard, /安装角色/);
+  assert.match(roleCard, /正在安装…/);
+  assert.match(roleCard, /label: "已安装"/);
   assert.match(roleCard, /角色聊天即将开放/);
   assert.doesNotMatch(renderer, /与该角色聊天/);
-  assert.doesNotMatch(renderer, /installRole|removeRole/);
+  assert.doesNotMatch(renderer, /removeRole|卸载角色/);
   assert.match(marketplacePage, /打开 OpenClaw 控制台/);
   assert.match(marketplacePage, /自行选择 Agent/);
   assert.match(marketplacePage, /openDashboard/);
+});
+
+test("角色安装通过 preload 固定 IPC 契约且 renderer 不能传路径或 options", () => {
+  const renderer = readRenderer();
+  const preload = readFile("src/gui/preload.js");
+  const main = readFile("src/gui/main.js");
+  const install = getFunctionBlock(renderer, "installMarketplaceRole");
+
+  assert.match(install, /window\.openClawInstaller\.installMarketplaceRole\(roleId\)/);
+  assert.doesNotMatch(install, /installRoot|statePath|rolesDirectory|workspacePath|options/);
+  assert.match(preload, /installMarketplaceRole\(roleId\)/);
+  assert.match(preload, /invoke\("role-marketplace:install", roleId\)/);
+  assert.doesNotMatch(preload, /role-marketplace:install", roleId,/);
+  assert.match(main, /ipcMain\.handle\("role-marketplace:install", async \(event, roleId\)/);
+  assert.match(main, /roleService\.installMarketplaceRole\(roleId\.trim\(\)\)/);
+});
+
+test("角色安装使用每个 roleId 的局部状态并阻止同角色重复提交", () => {
+  const renderer = readRenderer();
+  const roleCard = getFunctionBlock(renderer, "createMarketplaceRoleCard");
+  const install = getFunctionBlock(renderer, "installMarketplaceRole");
+
+  assert.match(roleCard, /installations\[role\.id\]/);
+  assert.match(roleCard, /pending: installing/);
+  assert.match(roleCard, /disabled: installing/);
+  assert.match(install, /current && current\.status === "installing"/);
+  assert.match(install, /installations\[roleId\]/);
+  assert.doesNotMatch(install, /setBusy\(|wizardState\.isBusy/);
+});
+
+test("角色安装成功更新市场状态，失败恢复局部按钮并使用安全提示", () => {
+  const renderer = readRenderer();
+  const install = getFunctionBlock(renderer, "installMarketplaceRole");
+  const applyResult = getFunctionBlock(renderer, "applyMarketplaceResult");
+  const safeMessage = getFunctionBlock(renderer, "safeMarketplaceMessage");
+
+  assert.match(install, /result\.marketplace/);
+  assert.match(install, /status: "success"/);
+  assert.match(install, /status: "error"/);
+  assert.match(install, /result\.alreadyInstalled/);
+  assert.match(applyResult, /marketplace\.roles = result\.roles/);
+  assert.match(safeMessage, /\[路径已隐藏\]/);
+  assert.doesNotMatch(install, /error\.message|error\.stack/);
 });
 
 test("角色市场 renderer 不直接访问 Node.js、文件系统或子进程", () => {

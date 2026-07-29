@@ -100,6 +100,32 @@ ipcMain.handle("role-marketplace:list", async () => {
   }
 });
 
+ipcMain.handle("role-marketplace:install", async (event, roleId) => {
+  if (typeof roleId !== "string" || !roleId.trim()) {
+    return {
+      ok: false,
+      roleId: null,
+      installed: false,
+      alreadyInstalled: false,
+      message: "角色标识无效，无法安装。",
+      marketplace: null
+    };
+  }
+
+  try {
+    return await roleService.installMarketplaceRole(roleId.trim());
+  } catch (error) {
+    return {
+      ok: false,
+      roleId: null,
+      installed: false,
+      alreadyInstalled: false,
+      message: "角色安装未完成，请稍后重试。",
+      marketplace: null
+    };
+  }
+});
+
 ipcMain.handle("external:open", async (event, url) => {
   const allowedUrls = new Set([
     "https://nodejs.org/zh-cn/download"
