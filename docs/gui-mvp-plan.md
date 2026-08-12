@@ -1,5 +1,8 @@
 # GUI MVP 设计计划
 
+> **历史方案：** 本文记录 Electron GUI MVP 设计阶段的范围和判断，不代表当前开发状态。
+> 当前事实请查看 `CURRENT_STATUS.md`，长期架构请查看 `PROJECT_MEMORY.md`。
+
 ## 项目背景
 
 OpenClaw Installer 是一个面向 macOS 普通用户的 OpenClaw 一键安装、配置引导与验证助手。

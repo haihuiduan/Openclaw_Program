@@ -1,5 +1,10 @@
 # OpenClaw 工具箱
 
+> 当前开发状态、未提交改动和最高优先级以
+> [`docs/CURRENT_STATUS.md`](docs/CURRENT_STATUS.md) 为准；新会话请先读取
+> [`docs/PROJECT_HANDOFF.md`](docs/PROJECT_HANDOFF.md)。本文主要保留用户入口、
+> 命令说明和已经进入代码的能力概览。
+
 ## 项目简介
 
 OpenClaw 工具箱是一个面向 macOS 用户的 OpenClaw 安装、配置与控制台管理工具。
