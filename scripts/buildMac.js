@@ -15,11 +15,6 @@ const finalAppPath = path.join(
   "mac-arm64",
   "OpenClaw 工具箱.app"
 );
-const disallowedExtendedAttributes = [
-  "com.apple.FinderInfo",
-  "com.apple.ResourceFork",
-  "com.apple.fileprovider.fpfs#P",
-];
 
 function runElectronBuilder(argumentsList) {
   const executable = path.join(
@@ -54,18 +49,12 @@ function runElectronBuilder(argumentsList) {
   });
 }
 
-async function removeFileProviderAttributes(appPath) {
-  for (const attribute of disallowedExtendedAttributes) {
-    await execFileAsync("/usr/bin/xattr", [
-      "-dr",
-      attribute,
-      appPath,
-    ]);
-  }
+async function clearExtendedAttributes(appPath, executeFile = execFileAsync) {
+  await executeFile("/usr/bin/xattr", ["-cr", appPath]);
 }
 
-async function verifyApp(appPath) {
-  await execFileAsync("/usr/bin/codesign", [
+async function verifyApp(appPath, executeFile = execFileAsync) {
+  await executeFile("/usr/bin/codesign", [
     "--verify",
     "--deep",
     "--strict",
@@ -74,8 +63,58 @@ async function verifyApp(appPath) {
   ]);
 }
 
-async function main() {
-  const requestedArguments = process.argv.slice(2);
+async function verifyDmg(dmgPath, executeFile = execFileAsync) {
+  await executeFile("/usr/bin/hdiutil", ["verify", dmgPath]);
+}
+
+async function findDmg(outputDirectory, fileSystem = fs) {
+  const entries = await fileSystem.readdir(outputDirectory);
+  const dmgNames = entries.filter((name) => name.endsWith(".dmg")).sort();
+
+  if (dmgNames.length !== 1) {
+    throw new Error("macOS DMG 产物数量无效");
+  }
+
+  return path.join(outputDirectory, dmgNames[0]);
+}
+
+async function executeBuildPipeline(options) {
+  const {
+    buildDmg,
+    runBuilder,
+    resolveDmgPaths,
+    promoteOutput,
+    temporaryAppPath,
+    finalAppPath: publishedAppPath,
+    clearAttributes = clearExtendedAttributes,
+    appVerifier = verifyApp,
+    dmgVerifier = verifyDmg,
+  } = options;
+
+  await runBuilder();
+
+  const dmgPaths = buildDmg
+    ? await resolveDmgPaths()
+    : { temporaryDmgPath: null, finalDmgPath: null };
+
+  await clearAttributes(temporaryAppPath);
+  await appVerifier(temporaryAppPath);
+  if (dmgPaths.temporaryDmgPath) {
+    await dmgVerifier(dmgPaths.temporaryDmgPath);
+  }
+
+  await promoteOutput();
+
+  await clearAttributes(publishedAppPath);
+  await appVerifier(publishedAppPath);
+  if (dmgPaths.finalDmgPath) {
+    await dmgVerifier(dmgPaths.finalDmgPath);
+  }
+
+  return dmgPaths;
+}
+
+async function buildMac(requestedArguments = process.argv.slice(2)) {
   const buildDirectoryOnly = requestedArguments[0] === "--dir";
   const buildDmg = requestedArguments[0] === "--dmg";
 
@@ -95,6 +134,7 @@ async function main() {
   );
   const previousOutputDirectory = `${finalOutputDirectory}.previous`;
   let previousOutputSaved = false;
+  let outputPromoted = false;
 
   try {
     const builderArguments = buildDirectoryOnly
@@ -105,42 +145,73 @@ async function main() {
       `--config.directories.output=${temporaryOutputDirectory}`
     );
 
-    await runElectronBuilder(builderArguments);
-    await verifyApp(temporaryAppPath);
+    await executeBuildPipeline({
+      buildDmg,
+      temporaryAppPath,
+      finalAppPath,
+      runBuilder: () => runElectronBuilder(builderArguments),
+      resolveDmgPaths: async () => {
+        const temporaryDmgPath = await findDmg(temporaryOutputDirectory);
+        return {
+          temporaryDmgPath,
+          finalDmgPath: path.join(
+            finalOutputDirectory,
+            path.basename(temporaryDmgPath)
+          ),
+        };
+      },
+      promoteOutput: async () => {
+        await fs.rm(previousOutputDirectory, { recursive: true, force: true });
+        try {
+          await fs.rename(finalOutputDirectory, previousOutputDirectory);
+          previousOutputSaved = true;
+        } catch (error) {
+          if (error.code !== "ENOENT") {
+            throw error;
+          }
+        }
+
+        try {
+          await fs.rename(temporaryOutputDirectory, finalOutputDirectory);
+          outputPromoted = true;
+        } catch (error) {
+          if (previousOutputSaved) {
+            await fs.rename(previousOutputDirectory, finalOutputDirectory);
+            previousOutputSaved = false;
+          }
+          throw error;
+        }
+      },
+    });
 
     await fs.rm(previousOutputDirectory, { recursive: true, force: true });
-    try {
-      await fs.rename(finalOutputDirectory, previousOutputDirectory);
-      previousOutputSaved = true;
-    } catch (error) {
-      if (error.code !== "ENOENT") {
-        throw error;
-      }
-    }
-
-    try {
-      await fs.rename(temporaryOutputDirectory, finalOutputDirectory);
-      await removeFileProviderAttributes(finalAppPath);
-      await verifyApp(finalAppPath);
-      await fs.rm(previousOutputDirectory, { recursive: true, force: true });
-      previousOutputSaved = false;
-    } catch (error) {
-      await fs.rm(finalOutputDirectory, { recursive: true, force: true });
-      if (previousOutputSaved) {
-        await fs.rename(previousOutputDirectory, finalOutputDirectory);
-        previousOutputSaved = false;
-      }
-      throw error;
-    }
+    previousOutputSaved = false;
   } finally {
     await fs.rm(temporaryRoot, { recursive: true, force: true });
     if (previousOutputSaved) {
       await fs.rm(previousOutputDirectory, { recursive: true, force: true });
     }
   }
+
+  return {
+    finalAppPath,
+    finalOutputDirectory,
+    outputPromoted,
+  };
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error.message}\n`);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  buildMac().catch((error) => {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  buildMac,
+  clearExtendedAttributes,
+  executeBuildPipeline,
+  findDmg,
+  verifyApp,
+  verifyDmg,
+};
