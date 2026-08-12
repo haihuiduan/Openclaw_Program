@@ -90,6 +90,9 @@ contextBridge.exposeInMainWorld("openClawInstaller", {
   openLogsDirectory() {
     return ipcRenderer.invoke("logs:open");
   },
+  resetFirstInstallState() {
+    return ipcRenderer.invoke("environment-reset:run");
+  },
   openExternal(url) {
     return ipcRenderer.invoke("external:open", url);
   },
@@ -101,6 +104,9 @@ contextBridge.exposeInMainWorld("openClawInstaller", {
   },
   onSetupProgress(callback) {
     return subscribeToProgress("setup:progress", callback);
+  },
+  onEnvironmentResetProgress(callback) {
+    return subscribeToProgress("environment-reset:progress", callback);
   }
 });
 

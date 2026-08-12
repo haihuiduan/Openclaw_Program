@@ -1,10 +1,13 @@
 // Electron 主进程：负责创建 GUI 窗口和 IPC 路由，业务调用交给 service 层。
 const path = require("node:path");
 const os = require("node:os");
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, clipboard, ipcMain, shell } = require("electron");
 const { loadConfig } = require("../config");
 const { createInstallDiagnosticLogger } = require("../utils/installDiagnosticLogger");
 const { getCommandEnv } = require("../utils/shell");
+const {
+  createEnvironmentResetService
+} = require("../core/environment-reset/resetService");
 const conversationService = require("./services/conversationService");
 const installerService = require("./services/installerService");
 const roleService = require("./services/roleService");
@@ -12,6 +15,7 @@ const { getProviderApiKeyGuidance } = require("./providerApiKeyGuidance");
 
 let mainWindow = null;
 let installDiagnosticLogger = null;
+let environmentResetService = null;
 
 function getInstallLogsDirectory() {
   return path.join(app.getPath("userData"), "logs");
@@ -47,6 +51,10 @@ function initializeInstallDiagnostics() {
     osHomeDir: os.homedir(),
     originalPath: process.env.PATH || "",
     finalCommandPath: getCommandEnv(process.env).PATH
+  });
+  environmentResetService = createEnvironmentResetService({
+    homeDir: os.homedir(),
+    diagnosticLogger: installDiagnosticLogger
   });
 }
 
@@ -124,7 +132,46 @@ ipcMain.handle("configure:done-check", async () => {
 });
 
 ipcMain.handle("dashboard:open", async () => {
-  return installerService.openDashboard();
+  const result = await installerService.openDashboard({
+    diagnosticLogger: installDiagnosticLogger,
+    readDashboardClipboard: () => clipboard.readText(),
+    writeDashboardClipboard: (value) => clipboard.writeText(value)
+  });
+
+  if (!result.ok || typeof result.dashboardUrl !== "string") {
+    return {
+      success: false,
+      ok: false,
+      code: result.code || null,
+      message: result.message || "控制台打开失败，请稍后重试。"
+    };
+  }
+
+  try {
+    await shell.openExternal(result.dashboardUrl);
+    if (installDiagnosticLogger) {
+      installDiagnosticLogger.event("dashboard_browser_opened", {
+        opened: true
+      });
+    }
+    return {
+      success: true,
+      ok: true,
+      message: "已在默认浏览器中打开 OpenClaw 控制台，请在浏览器中完成连接。"
+    };
+  } catch (error) {
+    if (installDiagnosticLogger) {
+      installDiagnosticLogger.event("dashboard_browser_opened", {
+        opened: false,
+        failureType: "open_external_failed"
+      });
+    }
+    return {
+      success: false,
+      ok: false,
+      message: "控制台地址已准备好，但默认浏览器打开失败，请稍后重试。"
+    };
+  }
 });
 
 ipcMain.handle("dashboard:stop", async () => {
@@ -399,6 +446,32 @@ ipcMain.handle("logs:open", async () => {
     };
   }
 
+  return result;
+});
+
+ipcMain.handle("environment-reset:run", async () => {
+  if (!environmentResetService) {
+    return {
+      ok: false,
+      status: "partial",
+      categories: [],
+      externalOpenClawDetected: false,
+      message: "重置服务尚未准备好，请稍后重试。"
+    };
+  }
+
+  const result = await environmentResetService.reset({
+    onProgress(update) {
+      sendProgress("environment-reset:progress", update);
+    }
+  });
+
+  if (result.ok) {
+    setTimeout(() => {
+      app.relaunch();
+      app.exit(0);
+    }, 1200);
+  }
   return result;
 });
 

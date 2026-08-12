@@ -104,6 +104,11 @@ const wizardState = {
     hasMore: false,
     nextBeforeSequence: null
   },
+  environmentReset: {
+    status: "idle",
+    message: "",
+    categories: []
+  },
   appearanceMode: "system",
   sidebarCollapsed: initialSidebarPreference.collapsed,
   sidebarPreferenceSet: initialSidebarPreference.hasPreference,
@@ -123,6 +128,18 @@ if (window.openClawInstaller && typeof window.openClawInstaller.onInstallProgres
     wizardState.installProgress = update || null;
     if (wizardState.currentPage === "home" && wizardState.currentStep === 1) {
       renderInstallProgress(update);
+    }
+  });
+}
+
+if (window.openClawInstaller && typeof window.openClawInstaller.onEnvironmentResetProgress === "function") {
+  window.openClawInstaller.onEnvironmentResetProgress((update) => {
+    if (wizardState.environmentReset.status !== "running") {
+      return;
+    }
+    wizardState.environmentReset.message = update && update.message || "正在清理当前用户数据";
+    if (wizardState.currentPage === "settings") {
+      renderWizard();
     }
   });
 }
@@ -409,7 +426,7 @@ function syncConsoleStatus() {
   }
 
   if (wizardState.dashboardStatus === "opened") {
-    updateStatusCard(consoleStatus, "运行中", "pass");
+    updateStatusCard(consoleStatus, "已打开", "neutral");
     return;
   }
 
@@ -478,7 +495,7 @@ function updateWizardHeading() {
 
   if (wizardState.currentPage === "settings") {
     wizardTitle.textContent = "设置";
-    wizardDescription.textContent = "更多偏好设置将在后续版本中提供。";
+    wizardDescription.textContent = "管理工具箱偏好和需要谨慎执行的高级操作。";
     return;
   }
 
@@ -2670,9 +2687,121 @@ function getRecentErrorSummary() {
 }
 
 function renderSettingsPage() {
-  const card = createCard("设置", "更多偏好设置将在后续版本中提供。");
-  card.appendChild(createNotice("当前版本暂不需要额外设置。", "info"));
-  wizardCard.appendChild(card);
+  const page = document.createElement("div");
+  page.className = "toolbox-page-stack";
+  const card = createCard("常规设置", "更多偏好设置将在后续版本中提供。");
+  card.appendChild(createNotice("当前版本没有需要调整的常规选项。", "info"));
+  const danger = createCard("高级操作 / 危险操作", "以下操作会永久删除当前用户的 OpenClaw 和工具箱数据。");
+  danger.classList.add("environment-reset-card");
+  danger.appendChild(createParagraph(
+    "删除 OpenClaw、全部配置、Agent、角色、聊天记录和本地缓存，仅保留 OpenClaw 工具箱。此操作不可恢复。"
+  ));
+  const reset = createButton("恢复首次安装状态", openEnvironmentResetConfirmation, "secondary");
+  reset.classList.add("environment-reset-button");
+  reset.disabled = wizardState.environmentReset.status === "running";
+  danger.appendChild(reset);
+  if (wizardState.environmentReset.message) {
+    danger.appendChild(createNotice(
+      wizardState.environmentReset.message,
+      wizardState.environmentReset.status === "partial" ? "warning" : "info"
+    ));
+  }
+  for (const item of wizardState.environmentReset.categories.filter((entry) => entry.status === "failed")) {
+    danger.appendChild(createNotice(`${item.label}未能完全清理`, "warning"));
+  }
+  page.append(card, danger);
+  wizardCard.appendChild(page);
+}
+
+function openEnvironmentResetConfirmation() {
+  if (wizardState.environmentReset.status === "running") {
+    return;
+  }
+  showEnvironmentResetDialog(
+    "恢复首次安装状态",
+    "此操作不可恢复。请确认以下删除范围。",
+    "继续",
+    () => showEnvironmentResetDialog(
+      "确认永久删除？",
+      "删除后无法恢复，需要重新安装 OpenClaw 并配置 API Key。",
+      "永久删除并重置",
+      runEnvironmentReset,
+      true
+    )
+  );
+}
+
+function showEnvironmentResetDialog(titleText, description, confirmLabel, confirmAction, finalStep = false) {
+  closeEnvironmentResetDialog();
+  const overlay = document.createElement("div");
+  overlay.className = "environment-reset-backdrop";
+  overlay.id = "environmentResetDialog";
+  const dialog = document.createElement("section");
+  dialog.className = "environment-reset-dialog";
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  const title = document.createElement("h3");
+  title.textContent = titleText;
+  dialog.append(title, createParagraph(description));
+  if (!finalStep) {
+    dialog.append(
+      createParagraph("将删除：OpenClaw CLI、API Key 和模型配置、Gateway、所有 Agent 和 Workspace、角色、团队、实例、会话、Memory、聊天记录及工具箱状态、缓存和日志。"),
+      createParagraph("将保留：OpenClaw 工具箱 App 本体、用户其他项目和系统软件。")
+    );
+  }
+  const actions = document.createElement("div");
+  actions.className = "environment-reset-dialog-actions";
+  actions.append(
+    createButton(finalStep ? "返回" : "取消", closeEnvironmentResetDialog, "secondary"),
+    createButton(confirmLabel, () => {
+      closeEnvironmentResetDialog();
+      confirmAction();
+    }, "primary")
+  );
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      closeEnvironmentResetDialog();
+    }
+  });
+  document.body.appendChild(overlay);
+}
+
+function closeEnvironmentResetDialog() {
+  const dialog = document.querySelector("#environmentResetDialog");
+  if (dialog) {
+    dialog.remove();
+  }
+}
+
+async function runEnvironmentReset() {
+  if (
+    wizardState.environmentReset.status === "running"
+    || !window.openClawInstaller
+    || typeof window.openClawInstaller.resetFirstInstallState !== "function"
+  ) {
+    return;
+  }
+  wizardState.environmentReset = { status: "running", message: "正在开始清理", categories: [] };
+  renderWizard();
+  try {
+    const result = await window.openClawInstaller.resetFirstInstallState();
+    wizardState.environmentReset = {
+      status: result && result.ok ? "success" : "partial",
+      message: result && result.message || "重置未能完成，请稍后重试。",
+      categories: result && Array.isArray(result.categories) ? result.categories : []
+    };
+  } catch (error) {
+    wizardState.environmentReset = {
+      status: "partial",
+      message: "重置未能完成，请稍后重试。",
+      categories: []
+    };
+  }
+  if (wizardState.currentPage === "settings") {
+    renderWizard();
+  }
 }
 
 function renderWelcomeStep() {
@@ -3078,7 +3207,7 @@ function getApiKeyCardStatus(homeState) {
 
 function getConsoleCardDetail() {
   if (wizardState.dashboardStatus === "opened") {
-    return wizardState.dashboardMessage || "Dashboard 已运行";
+    return wizardState.dashboardMessage || "已打开控制台，等待浏览器完成连接";
   }
 
   if (wizardState.dashboardStatus === "starting") {
@@ -3098,7 +3227,7 @@ function getConsoleCardDetail() {
 
 function getConsoleCardState() {
   if (wizardState.dashboardStatus === "opened") {
-    return "pass";
+    return "neutral";
   }
 
   if (wizardState.dashboardStatus === "failed") {
@@ -3114,7 +3243,7 @@ function getConsoleCardState() {
 
 function getConsoleStatusLabel() {
   if (wizardState.dashboardStatus === "opened") {
-    return "运行中";
+    return "已打开";
   }
 
   if (wizardState.dashboardStatus === "starting") {
@@ -3513,7 +3642,7 @@ async function openDashboardFromConfigResult() {
 
     if (result.ok) {
       wizardState.dashboardStatus = "opened";
-      wizardState.dashboardMessage = result.message || "已尝试启动 OpenClaw 控制台，请在浏览器中继续使用。";
+      wizardState.dashboardMessage = result.message || "已打开 OpenClaw 控制台，请在浏览器中完成连接。";
       updateLastAction("启动控制台");
       syncConsoleStatus();
       handleGoHome();
@@ -3560,7 +3689,7 @@ async function openDashboard() {
 
     if (result.ok) {
       wizardState.dashboardStatus = "opened";
-      wizardState.dashboardMessage = result.message || "已尝试启动 OpenClaw 控制台，请在浏览器中继续使用。";
+      wizardState.dashboardMessage = result.message || "已打开 OpenClaw 控制台，请在浏览器中完成连接。";
       updateLastAction("启动控制台");
     } else {
       wizardState.dashboardStatus = "failed";
@@ -5121,7 +5250,7 @@ function getSidebarMiniStatusLabel() {
   }
 
   if (wizardState.dashboardStatus === "opened") {
-    return "控制台运行中";
+    return "控制台已打开";
   }
 
   return "工具箱正常";

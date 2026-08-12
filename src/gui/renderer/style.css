@@ -1212,6 +1212,56 @@ h2 {
   font-size: 13px;
 }
 
+.environment-reset-card {
+  border-color: #e7a3a3;
+}
+
+.environment-reset-button {
+  border-color: #c93434;
+  color: #a51f1f;
+}
+
+.environment-reset-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(14, 18, 27, 0.62);
+}
+
+.environment-reset-dialog {
+  width: min(560px, 100%);
+  border: 1px solid #e1a0a0;
+  border-radius: 16px;
+  padding: 24px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(12, 17, 27, 0.3);
+}
+
+.environment-reset-dialog h3 {
+  margin: 0 0 12px;
+  color: #a51f1f;
+}
+
+.environment-reset-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+body[data-theme="dark"] .environment-reset-dialog {
+  border-color: #8d4a4a;
+  background: #202631;
+}
+
+body[data-theme="dark"] .environment-reset-button,
+body[data-theme="dark"] .environment-reset-dialog h3 {
+  color: #ff9b9b;
+}
+
 .field-help {
   color: #697386;
   font-size: 12px;

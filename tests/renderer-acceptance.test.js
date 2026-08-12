@@ -214,6 +214,46 @@ test("配置命令失败时不能标记为已验证", () => {
   assert.ok(failureIndex < verifyIndex);
 });
 
+test("打开控制台由 Main 解析安全 URL 后显式调用系统浏览器", () => {
+  const main = readFile("src/gui/main.js");
+  const service = readFile("src/gui/services/installerService.js");
+  const preload = readFile("src/gui/preload.js");
+  const renderer = readRenderer();
+
+  assert.match(service, /\["gateway", "start"\]/);
+  assert.match(service, /\["gateway", "install"\]/);
+  assert.match(service, /\["dashboard", "--no-open"\]/);
+  assert.doesNotMatch(service, /\["dashboard", "--yes", "--no-open"\]/);
+  assert.doesNotMatch(service, /\["dashboard", "--json"\]/);
+  assert.match(service, /readDashboardClipboard/);
+  assert.match(service, /writeDashboardClipboard/);
+  assert.match(service, /clipboard_authenticated_url/);
+  assert.match(service, /DASHBOARD_AUTH_URL_UNAVAILABLE/);
+  assert.match(service, /loopbackHosts/);
+  assert.match(service, /dashboardUrlResolved/);
+  assert.match(service, /queryPresent/);
+  assert.match(service, /hashPresent/);
+  assert.match(service, /tokenPresent/);
+  assert.doesNotMatch(service, /connectionOk/);
+  assert.match(main, /shell\.openExternal\(result\.dashboardUrl\)/);
+  assert.match(main, /clipboard\.readText\(\)/);
+  assert.match(main, /clipboard\.writeText\(value\)/);
+  assert.match(main, /dashboard_browser_opened/);
+  assert.match(main, /请在浏览器中完成连接/);
+  assert.match(preload, /invoke\("dashboard:open"\)/);
+  assert.doesNotMatch(main, /dashboardUrl:\s*result\.dashboardUrl/);
+  assert.doesNotMatch(service, /runDetachedCommand\("openclaw", \["dashboard"/);
+  assert.match(renderer, /控制台已打开/);
+  assert.doesNotMatch(renderer, /控制台运行中/);
+  const openDashboard = getFunctionBlock(renderer, "openDashboard");
+  assert.match(openDashboard, /dashboardStatus = "starting"/);
+  assert.match(openDashboard, /dashboardStatus = "failed"/);
+  assert.match(
+    renderer,
+    /async function openDashboard\(\)[\s\S]*?finally\s*\{[\s\S]*?renderDashboardFeedback/
+  );
+});
+
 test("DeepSeek 快速配置只提供当前正式模型标识", () => {
   const source = readRenderer();
   const modelOptions = source.slice(
@@ -986,4 +1026,47 @@ test("Electron Main 将诊断日志固定到 userData logs 且 Core 不直接依
   assert.match(main, /finalCommandPath/);
   assert.doesNotMatch(diagnosticLogger, /require\("electron"\)/);
   assert.doesNotMatch(workflow, /require\("electron"\)/);
+});
+
+test("恢复首次安装状态使用两次明确确认且只有最终确认调用 IPC", () => {
+  const source = readRenderer();
+  const first = getFunctionBlock(source, "openEnvironmentResetConfirmation");
+  const dialog = getFunctionBlock(source, "showEnvironmentResetDialog");
+  const run = getFunctionBlock(source, "runEnvironmentReset");
+
+  assert.match(first, /恢复首次安装状态/);
+  assert.match(first, /确认永久删除/);
+  assert.match(first, /永久删除并重置/);
+  assert.match(dialog, /取消/);
+  assert.match(dialog, /返回/);
+  assert.doesNotMatch(first, /resetFirstInstallState/);
+  assert.doesNotMatch(dialog, /resetFirstInstallState/);
+  assert.match(run, /resetFirstInstallState\(\)/);
+});
+
+test("重置 IPC 不接收 renderer 路径且成功才重启应用", () => {
+  const preload = readFile("src/gui/preload.js");
+  const main = readFile("src/gui/main.js");
+  const handlerStart = main.indexOf('ipcMain.handle("environment-reset:run"');
+  const handlerEnd = main.indexOf("function sendProgress", handlerStart);
+  const handler = main.slice(handlerStart, handlerEnd);
+
+  assert.match(preload, /resetFirstInstallState\(\)/);
+  assert.match(preload, /invoke\("environment-reset:run"\)/);
+  assert.doesNotMatch(preload, /environment-reset:run",/);
+  assert.match(main, /onEnvironmentResetProgress|environment-reset:progress/);
+  assert.match(handler, /if \(result\.ok\)/);
+  assert.match(handler, /app\.relaunch\(\)/);
+  assert.match(handler, /app\.exit\(0\)/);
+});
+
+test("重置进行中禁止重复点击且部分失败不会显示成功", () => {
+  const source = readRenderer();
+  const settings = getFunctionBlock(source, "renderSettingsPage");
+  const run = getFunctionBlock(source, "runEnvironmentReset");
+
+  assert.match(settings, /environmentReset\.status === "running"/);
+  assert.match(settings, /entry\.status === "failed"/);
+  assert.match(run, /status: result && result\.ok \? "success" : "partial"/);
+  assert.doesNotMatch(run, /Assistant|sendAgentChatMessage|Conversation/);
 });
