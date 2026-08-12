@@ -106,18 +106,16 @@ async function clearStaleExecutionLease(leasePath, options = {}) {
     return { active: false, removed: false, lease: null };
   }
   const now = resolveNow(options.now);
-  const maxAgeMs = resolveMaxAge(options.maxAgeMs);
+  resolveMaxAge(options.maxAgeMs);
   const ageMs = now.getTime() - Date.parse(lease.createdAt);
   if (ageMs < 0) {
     throw new Error("Execution 租约 createdAt 不能位于未来：" + lease.createdAt);
   }
-  if (ageMs >= maxAgeMs) {
+  if (isProcessDefinitelyDead(isProcessAlive, lease.pid)) {
     await fileSystem.rm(path.resolve(leasePath), { force: true });
     return { active: false, removed: true, lease };
   }
-  if (isProcessAlive(lease.pid)) return { active: true, removed: false, lease };
-  await fileSystem.rm(path.resolve(leasePath), { force: true });
-  return { active: false, removed: true, lease };
+  return { active: true, removed: false, lease };
 }
 
 function normalizeExecutionLease(value) {
@@ -163,7 +161,15 @@ function defaultIsProcessAlive(pid) {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return Boolean(error && error.code === "EPERM");
+    return !(error && error.code === "ESRCH");
+  }
+}
+
+function isProcessDefinitelyDead(isProcessAlive, pid) {
+  try {
+    return isProcessAlive(pid) === false;
+  } catch (error) {
+    return false;
   }
 }
 

@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const fsp = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
+const { spawn } = require("node:child_process");
 const test = require("node:test");
 const { projectPath } = require("./helpers");
 const { writeInstanceState, readInstanceState } = require(projectPath("src/core/agent-instances/state.js"));
@@ -12,6 +13,12 @@ const {
 const {
   acquireExecutionLease, clearStaleExecutionLease, readExecutionLease, releaseExecutionLease
 } = require(projectPath("src/core/executions/locks.js"));
+const {
+  acquireAgentCallLease, readAgentCallLease, releaseAgentCallLease
+} = require(projectPath("src/core/openclaw-agent/agentCallLease.js"));
+const {
+  resolveFileLeaseMutationGuardPath
+} = require(projectPath("src/core/conversations/fileLease.js"));
 const {
   readExecutionState, updateExecutionState, writeExecutionState
 } = require(projectPath("src/core/executions/state.js"));
@@ -28,6 +35,10 @@ const { updateTaskState } = require(projectPath("src/core/tasks/state.js"));
 const {
   formatExecutionInspect, formatExecutionList, formatExecutionResult
 } = require(projectPath("src/cli/presenters/executionsPresenter.js"));
+
+const EXECUTION_LEASE_CHILD = projectPath(
+  "tests/fixtures/execution-lease-child-process.js"
+);
 
 function instance(root, id, overrides = {}) {
   return {
@@ -191,6 +202,31 @@ test("run-task 使用 Mock Adapter 完成 Run，并只同步 Task 状态", async
   assert.equal((fs.statSync(f.options.executionStatePath).mode & 0o777), 0o600);
   assert.deepEqual((await listExecutions({ status: "completed" }, f.options)).map((run) => run.runId), [result.run.runId]);
   assert.equal((await inspectExecution(result.run.runId, f.options)).openClawRunId, "remote-run-safe");
+});
+
+test("Execution 与 Conversation 共用 Agent-call lease，存在 Conversation 调用时拒绝执行", async (t) => {
+  const f = await fixture(t);
+  const agentCallLeasePath = path.join(
+    path.dirname(f.options.executionLeasePath),
+    "agent-call.lock"
+  );
+  const holder = {
+    operationId: "msg-00000000-0000-4000-8000-000000000001",
+    operationType: "conversation",
+    instanceId: "test-role-worker",
+    pid: process.pid,
+    createdAt: f.clock.value
+  };
+  await acquireAgentCallLease(agentCallLeasePath, holder);
+  await assert.rejects(
+    () => runTask("test-task", { confirm: true }, f.options),
+    /全局串行调用/
+  );
+  assert.equal(f.calls.length, 0);
+  assert.equal(fs.existsSync(f.options.executionLeasePath), false);
+  assert.equal((await readExecutionState(f.options.executionStatePath)).runs
+    && Object.keys((await readExecutionState(f.options.executionStatePath)).runs).length, 0);
+  await releaseAgentCallLease(agentCallLeasePath, holder);
 });
 
 test("createSessionKey 默认行为兼容，并允许首次执行注入安全固定生成器", async (t) => {
@@ -574,6 +610,203 @@ test("reconcile 将遗留 active Run 标记 interrupted，并重试 completed Ru
   assert.equal(fs.existsSync(f.options.executionLeasePath), false);
 });
 
+test("reconcile 独立清理 Execution 崩溃遗留的共享 Agent-call lease", async (t) => {
+  const f = await fixture(t);
+  const active = runRecord();
+  const agentLeasePath = resolveAgentCallLeasePath(f.options);
+  await writeExecutionState(f.options.executionStatePath, {
+    schemaVersion: 1,
+    runs: { [active.runId]: active }
+  });
+  await acquireAgentCallLease(agentLeasePath, {
+    operationId: active.runId,
+    operationType: "execution",
+    instanceId: active.assignedInstanceId,
+    pid: 99999999,
+    createdAt: active.createdAt
+  });
+  f.clock.value = "2026-07-21T03:00:00.000Z";
+  f.options.isProcessAlive = () => false;
+
+  const result = await reconcileExecutions(f.options);
+
+  assert.equal(result.staleAgentCallLeaseRemoved, true);
+  assert.ok(result.interruptedRuns.includes(active.runId));
+  assert.equal((await inspectExecution(active.runId, f.options)).status, "interrupted");
+  assert.equal(fs.existsSync(agentLeasePath), false);
+  assert.equal(f.calls.length, 0);
+
+  const nextHolder = {
+    operationId: "run-00000000-0000-4000-8000-000000000301",
+    operationType: "execution",
+    instanceId: "test-role-worker",
+    pid: process.pid,
+    createdAt: f.clock.value
+  };
+  await acquireAgentCallLease(agentLeasePath, nextHolder);
+  assert.deepEqual(await readAgentCallLease(agentLeasePath), nextHolder);
+  assert.equal(await releaseAgentCallLease(agentLeasePath, nextHolder), true);
+});
+
+test("reconcile 保留活跃 Execution 和 Conversation 的共享 Agent-call lease", async (t) => {
+  for (const [operationType, operationId] of [
+    ["execution", "run-00000000-0000-4000-8000-000000000302"],
+    ["conversation", "msg-00000000-0000-4000-8000-000000000303"]
+  ]) {
+    const f = await fixture(t);
+    const agentLeasePath = resolveAgentCallLeasePath(f.options);
+    const holder = {
+      operationId,
+      operationType,
+      instanceId: "test-role-worker",
+      pid: process.pid,
+      createdAt: "2026-07-21T00:00:00.000Z"
+    };
+    await acquireAgentCallLease(agentLeasePath, holder);
+    if (operationType === "execution") {
+      await writeExecutionState(f.options.executionStatePath, {
+        schemaVersion: 1,
+        runs: {
+          [operationId]: runRecord({ runId: operationId })
+        }
+      });
+    }
+    f.clock.value = "2026-07-21T03:00:00.000Z";
+    f.options.agentCallLeaseMaxAgeMs = 1000;
+    f.options.isProcessAlive = () => true;
+
+    await assert.rejects(
+      () => reconcileExecutions(f.options),
+      /Agent 调用租约存活/
+    );
+    assert.deepEqual(await readAgentCallLease(agentLeasePath), holder);
+    const executionState = await readExecutionState(
+      f.options.executionStatePath
+    );
+    if (operationType === "execution") {
+      assert.equal(executionState.runs[operationId].status, "running");
+    } else {
+      assert.deepEqual(executionState, { schemaVersion: 1, runs: {} });
+    }
+    assert.equal(await releaseAgentCallLease(agentLeasePath, holder), true);
+  }
+});
+
+test("reconcile 在共享 Agent-call lease 不存在时保持幂等", async (t) => {
+  const f = await fixture(t);
+  const agentLeasePath = resolveAgentCallLeasePath(f.options);
+
+  const first = await reconcileExecutions(f.options);
+  const second = await reconcileExecutions(f.options);
+
+  assert.equal(first.staleAgentCallLeaseRemoved, false);
+  assert.equal(second.staleAgentCallLeaseRemoved, false);
+  assert.equal(fs.existsSync(agentLeasePath), false);
+  assert.equal(
+    fs.existsSync(resolveFileLeaseMutationGuardPath(agentLeasePath)),
+    false
+  );
+});
+
+test("reconcile 等待 stale-clear 时租约被替换，不删除新共享租约", async (t) => {
+  const f = await fixture(t);
+  const agentLeasePath = resolveAgentCallLeasePath(f.options);
+  const oldHolder = {
+    operationId: "run-00000000-0000-4000-8000-000000000304",
+    operationType: "execution",
+    instanceId: "test-role-worker",
+    pid: 99999999,
+    createdAt: "2026-07-21T00:00:00.000Z"
+  };
+  const newHolder = {
+    operationId: "msg-00000000-0000-4000-8000-000000000305",
+    operationType: "conversation",
+    instanceId: "test-role-worker",
+    pid: process.pid,
+    createdAt: "2026-07-21T02:00:00.000Z"
+  };
+  await acquireAgentCallLease(agentLeasePath, oldHolder);
+  f.clock.value = "2026-07-21T02:00:00.000Z";
+  f.options.agentCallLeaseMaxAgeMs = 60 * 60 * 1000;
+  f.options.isProcessAlive = () => true;
+
+  const guardPath = resolveFileLeaseMutationGuardPath(agentLeasePath);
+  const guardHandle = await holdMutationGuard(guardPath);
+  const attempted = deferred();
+  f.options.fileSystem = observeGuardAttempt(guardPath, attempted.resolve);
+  const reconcile = reconcileExecutions(f.options);
+  await attempted.promise;
+
+  fs.rmSync(agentLeasePath);
+  fs.writeFileSync(agentLeasePath, JSON.stringify(newHolder) + "\n", {
+    encoding: "utf8",
+    mode: 0o600
+  });
+  await guardHandle.close();
+  fs.rmSync(guardPath);
+
+  await assert.rejects(reconcile, /Agent 调用租约存活/);
+  assert.deepEqual(await readAgentCallLease(agentLeasePath), newHolder);
+  assert.equal(await releaseAgentCallLease(agentLeasePath, oldHolder), false);
+  assert.deepEqual(await readAgentCallLease(agentLeasePath), newHolder);
+  assert.equal(await releaseAgentCallLease(agentLeasePath, newHolder), true);
+  assert.equal(fs.existsSync(guardPath), false);
+});
+
+test("独立 Execution 子进程崩溃后 reconcile 清理共享租约并允许重新获取", async (t) => {
+  const f = await fixture(t);
+  const fakeHome = path.join(f.root, "fake-home");
+  const agentLeasePath = resolveAgentCallLeasePath(f.options);
+  const active = runRecord({
+    runId: "run-00000000-0000-4000-8000-000000000306"
+  });
+  await fsp.mkdir(fakeHome, { recursive: true });
+  await writeExecutionState(f.options.executionStatePath, {
+    schemaVersion: 1,
+    runs: { [active.runId]: active }
+  });
+
+  const crashed = await runExecutionLeaseChild({
+    action: "acquire-and-crash",
+    fakeHome,
+    executionLeasePath: f.options.executionLeasePath,
+    agentCallLeasePath: agentLeasePath,
+    runId: active.runId,
+    instanceId: active.assignedInstanceId,
+    createdAt: active.createdAt
+  });
+  assert.equal(crashed.code, 73);
+  assert.equal(crashed.result.acquired, true);
+  assert.equal(fs.existsSync(f.options.executionLeasePath), true);
+  assert.equal(fs.existsSync(agentLeasePath), true);
+
+  f.clock.value = "2026-07-21T03:00:00.000Z";
+  const reconciled = await reconcileExecutions(f.options);
+  assert.equal(reconciled.staleLeaseRemoved, true);
+  assert.equal(reconciled.staleAgentCallLeaseRemoved, true);
+  assert.equal((await inspectExecution(active.runId, f.options)).status, "interrupted");
+  assert.equal(fs.existsSync(f.options.executionLeasePath), false);
+  assert.equal(fs.existsSync(agentLeasePath), false);
+
+  const next = await runExecutionLeaseChild({
+    action: "acquire-agent-and-release",
+    fakeHome,
+    agentCallLeasePath: agentLeasePath,
+    runId: "run-00000000-0000-4000-8000-000000000307",
+    instanceId: active.assignedInstanceId,
+    createdAt: f.clock.value
+  });
+  assert.equal(next.code, 0);
+  assert.equal(next.result.acquired, true);
+  assert.equal(next.result.released, true);
+  assert.equal(fs.existsSync(agentLeasePath), false);
+  assert.equal(
+    fs.existsSync(resolveFileLeaseMutationGuardPath(agentLeasePath)),
+    false
+  );
+  assert.equal(f.calls.length, 0);
+});
+
 test("跨进程租约使用 O_EXCL 拒绝并发，且仅持有者可释放", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-execution-lease-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -610,7 +843,7 @@ test("跨进程租约使用 O_EXCL 拒绝并发，且仅持有者可释放", asy
   assert.equal(fs.existsSync(leasePath), false);
 });
 
-test("租约 createdAt 决定过期边界，且非法租约明确报错并保留原文件", async (t) => {
+test("租约 createdAt 校验有效但 maxAge 不覆盖活跃 PID，非法租约保留原文件", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-execution-lease-age-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const now = () => new Date("2026-07-21T01:00:00.000Z");
@@ -632,10 +865,25 @@ test("租约 createdAt 决定过期边界，且非法租约明确报错并保留
     runId: "run-00000000-0000-4000-8000-000000000204",
     createdAt: "2026-07-21T00:59:59.000Z"
   });
-  assert.equal((await clearStaleExecutionLease(boundaryPath, {
+  assert.deepEqual(await clearStaleExecutionLease(boundaryPath, {
     isProcessAlive: () => true, maxAgeMs: 1000, now
-  })).removed, true);
-  assert.equal(fs.existsSync(boundaryPath), false);
+  }), {
+    active: true,
+    removed: false,
+    lease: {
+      ...base,
+      runId: "run-00000000-0000-4000-8000-000000000204",
+      createdAt: "2026-07-21T00:59:59.000Z"
+    }
+  });
+  assert.equal(fs.existsSync(boundaryPath), true);
+  assert.equal(
+    await releaseExecutionLease(
+      boundaryPath,
+      "run-00000000-0000-4000-8000-000000000204"
+    ),
+    true
+  );
 
   const invalidCases = [
     ["missing-created-at", { runId: base.runId, pid: process.pid }, /createdAt/],
@@ -700,7 +948,7 @@ test("runTask 使用注入 now 写 createdAt，并在成功、失败或 Adapter 
   assert.equal(fs.existsSync(thrown.options.executionLeasePath), false);
 });
 
-test("reconcile 保留有效租约、清理过期租约并拒绝损坏租约", async (t) => {
+test("reconcile 保留活跃租约（包括超龄租约）并拒绝损坏租约", async (t) => {
   const active = await fixture(t);
   active.options.executionLeaseMaxAgeMs = 1000;
   active.options.isProcessAlive = () => true;
@@ -721,15 +969,35 @@ test("reconcile 保留有效租约、清理过期租约并拒绝损坏租约", a
   expired.options.executionLeaseMaxAgeMs = 1000;
   expired.options.isProcessAlive = () => true;
   expired.clock.value = "2026-07-21T01:00:00.000Z";
+  const activeRun = runRecord({
+    runId: "run-00000000-0000-4000-8000-000000000206"
+  });
+  await writeExecutionState(expired.options.executionStatePath, {
+    schemaVersion: 1,
+    runs: { [activeRun.runId]: activeRun }
+  });
   await acquireExecutionLease(expired.options.executionLeasePath, {
-    runId: "run-00000000-0000-4000-8000-000000000206",
+    runId: activeRun.runId,
     pid: process.pid,
     createdAt: "2026-07-21T00:59:59.000Z"
   });
-  const result = await reconcileExecutions(expired.options);
-  assert.equal(result.staleLeaseRemoved, true);
-  assert.equal(fs.existsSync(expired.options.executionLeasePath), false);
+  await assert.rejects(
+    () => reconcileExecutions(expired.options),
+    /Execution 租约存活/
+  );
+  assert.equal(fs.existsSync(expired.options.executionLeasePath), true);
+  assert.equal(
+    (await inspectExecution(activeRun.runId, expired.options)).status,
+    "running"
+  );
   assert.equal(expired.calls.length, 0);
+  assert.equal(
+    await releaseExecutionLease(
+      expired.options.executionLeasePath,
+      activeRun.runId
+    ),
+    true
+  );
 
   const invalid = await fixture(t);
   const invalidContent = JSON.stringify({
@@ -742,3 +1010,82 @@ test("reconcile 保留有效租约、清理过期租约并拒绝损坏租约", a
   assert.equal(fs.readFileSync(invalid.options.executionLeasePath, "utf8"), invalidContent);
   assert.equal(invalid.calls.length, 0);
 });
+
+function resolveAgentCallLeasePath(options) {
+  return path.join(path.dirname(options.executionLeasePath), "agent-call.lock");
+}
+
+async function holdMutationGuard(guardPath) {
+  await fsp.mkdir(path.dirname(guardPath), {
+    recursive: true,
+    mode: 0o700
+  });
+  return fsp.open(guardPath, "wx", 0o600);
+}
+
+function observeGuardAttempt(guardPath, onAttempt) {
+  let observed = false;
+  return {
+    ...fsp,
+    async open(target, flags, mode) {
+      if (
+        !observed &&
+        path.resolve(target) === path.resolve(guardPath) &&
+        flags === "wx"
+      ) {
+        observed = true;
+        onAttempt();
+      }
+      return fsp.open(target, flags, mode);
+    }
+  };
+}
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function runExecutionLeaseChild(config) {
+  const encoded = Buffer.from(JSON.stringify(config)).toString("base64url");
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [EXECUTION_LEASE_CHILD, encoded], {
+      cwd: projectPath("."),
+      env: {
+        HOME: config.fakeHome,
+        PATH: process.env.PATH || "",
+        TMPDIR: os.tmpdir()
+      },
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => child.kill("SIGKILL"), 15000);
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.once("error", reject);
+    child.once("close", (code, signal) => {
+      clearTimeout(timer);
+      const line = stdout.trim().split("\n").filter(Boolean).at(-1);
+      if (!line) {
+        reject(new Error(
+          `Execution lease 子进程无结果（code=${code}, signal=${signal}, stderr=${stderr.trim()}）`
+        ));
+        return;
+      }
+      try {
+        resolve({ code, signal, stderr, result: JSON.parse(line) });
+      } catch (error) {
+        reject(new Error("Execution lease 子进程输出不是 JSON：" + line));
+      }
+    });
+  });
+}

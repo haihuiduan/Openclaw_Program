@@ -43,8 +43,55 @@ contextBridge.exposeInMainWorld("openClawInstaller", {
   stopDashboard() {
     return ipcRenderer.invoke("dashboard:stop");
   },
+  listMarketplaceRoles() {
+    return ipcRenderer.invoke("role-marketplace:list");
+  },
+  listMyRoles() {
+    return ipcRenderer.invoke("my-roles:list");
+  },
+  installMarketplaceRole(roleId) {
+    return ipcRenderer.invoke("role-marketplace:install", roleId);
+  },
+  enableMarketplaceRole(roleId) {
+    return ipcRenderer.invoke("role-marketplace:enable", roleId);
+  },
+  listChatConversations() {
+    return ipcRenderer.invoke("chat-center:list");
+  },
+  createNewAgentChat(instanceId, title) {
+    return ipcRenderer.invoke("agent-chat:create", instanceId, title);
+  },
+  openExistingAgentChat(conversationId) {
+    return ipcRenderer.invoke("agent-chat:open-existing", conversationId);
+  },
+  listAgentChatMessages(instanceId, conversationId, pagination) {
+    return ipcRenderer.invoke(
+      "agent-chat:messages",
+      instanceId,
+      conversationId,
+      pagination
+    );
+  },
+  sendAgentChatMessage(instanceId, conversationId, content) {
+    return ipcRenderer.invoke(
+      "agent-chat:send",
+      instanceId,
+      conversationId,
+      content
+    );
+  },
+  reconcileAgentChat(instanceId, conversationId) {
+    return ipcRenderer.invoke(
+      "agent-chat:reconcile",
+      instanceId,
+      conversationId
+    );
+  },
   openLogsDirectory() {
     return ipcRenderer.invoke("logs:open");
+  },
+  resetFirstInstallState() {
+    return ipcRenderer.invoke("environment-reset:run");
   },
   openExternal(url) {
     return ipcRenderer.invoke("external:open", url);
@@ -57,6 +104,9 @@ contextBridge.exposeInMainWorld("openClawInstaller", {
   },
   onSetupProgress(callback) {
     return subscribeToProgress("setup:progress", callback);
+  },
+  onEnvironmentResetProgress(callback) {
+    return subscribeToProgress("environment-reset:progress", callback);
   }
 });
 

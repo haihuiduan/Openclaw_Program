@@ -11,14 +11,22 @@ function loadVerifyWithShell({ installed = true, runCommand } = {}) {
   clearProjectModules();
 
   const calls = {
-    commandExists: [],
+    resolveCommand: [],
     runCommand: []
   };
 
   mockModule("src/utils/shell/index.js", {
-    commandExists: async (command) => {
-      calls.commandExists.push(command);
-      return installed;
+    resolveCommand: async (command) => {
+      calls.resolveCommand.push(command);
+      return {
+        command,
+        found: installed,
+        resolvedPath: installed ? "/mock/bin/openclaw" : null,
+        exitCode: installed ? 0 : 1,
+        signal: null,
+        spawnError: null,
+        timedOut: false
+      };
     },
     runCommand: async (command, args = [], options = {}) => {
       calls.runCommand.push({ command, args, options });
@@ -58,7 +66,7 @@ test("verify --dry-run 不执行 openclaw 命令", async () => {
 
   assert.equal(result.ok, true);
   assert.equal(result.dryRun, true);
-  assert.equal(calls.commandExists.length, 0);
+  assert.equal(calls.resolveCommand.length, 0);
   assert.equal(calls.runCommand.length, 0);
 });
 
@@ -69,17 +77,18 @@ test("未安装 OpenClaw 时 verify 返回 ok:false", async () => {
 
   assert.equal(result.ok, false);
   assert.match(result.checks[0].message, /未检测到 OpenClaw/);
-  assert.deepEqual(calls.commandExists, ["openclaw"]);
+  assert.deepEqual(calls.resolveCommand, ["openclaw"]);
   assert.equal(calls.runCommand.length, 0);
 });
 
 test("openclaw --version 成功时 verify 返回 ok:true", async () => {
-  const { runVerify } = loadVerifyWithShell({ installed: true });
+  const { runVerify, calls } = loadVerifyWithShell({ installed: true });
 
   const result = await runVerify({});
 
   assert.equal(result.ok, true);
   assert.equal(result.checks.find((check) => check.name === "OpenClaw 版本").level, "pass");
+  assert.equal(calls.runCommand[0].command, "/mock/bin/openclaw");
 });
 
 test("openclaw config file 失败时 verify 返回 ok:true 但包含 warning", async () => {

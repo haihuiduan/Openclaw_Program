@@ -1,5 +1,8 @@
 # OpenClaw 工具箱手动验收清单
 
+> 本清单包含早期 GUI MVP 场景，执行前必须先读取 `CURRENT_STATUS.md` 和
+> `KNOWN_ISSUES.md`，并按当前代码补充角色市场、Conversation 和普通用户首次安装场景。
+
 ## 使用说明
 
 本文档用于在打包 `.app` 或 DMG 前，人工验证 OpenClaw 工具箱的核心流程、状态分流、交互反馈和安全边界。

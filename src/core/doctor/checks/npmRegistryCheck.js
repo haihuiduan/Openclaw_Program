@@ -1,11 +1,13 @@
 // npm 网络检测：检查 registry 是否可访问，不自动修改 registry 或代理配置。
 const { runCommand } = require("../../../utils/shell");
 
-async function checkNpmRegistry() {
+async function checkNpmRegistry(options = {}) {
   try {
     const result = await runCommand("npm", ["ping"], {
       allowFailure: true,
-      timeoutMs: 7000
+      timeoutMs: 7000,
+      diagnosticLogger: options.diagnosticLogger,
+      env: options.commandEnv
     });
 
     if (!result.timedOut && result.code === 0) {

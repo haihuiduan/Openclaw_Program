@@ -166,6 +166,32 @@ test("register 同一映射且 OpenClaw 配置一致时幂等，不重复 add", 
   assert.equal((await listInstances(options)).length, 1);
 });
 
+test("register 对已有但远端 missing 的合法 Instance 执行一次安全重注册", async () => {
+  const root = createTempDirectory();
+  const role = await createInstalledRole(root);
+  const adapter = createAdapter();
+  const options = createOptions(root, role.roleStatePath, adapter);
+
+  await registerInstance("test-role", "worker", options);
+  adapter.agents.splice(0, adapter.agents.length, {
+    id: "main",
+    workspacePath: path.join(root, "main-workspace"),
+    agentDir: path.join(root, "main-agent")
+  });
+  const repaired = await registerInstance("test-role", "worker", options);
+  const state = await listInstances(options);
+
+  assert.equal(repaired.ok, true);
+  assert.equal(repaired.repaired, true);
+  assert.equal(repaired.instance.status, "registered");
+  assert.equal(state[0].status, "registered");
+  assert.equal(adapter.calls.filter((call) => call.method === "registerAgent").length, 2);
+  assert.deepEqual(
+    adapter.agents.map((agent) => agent.id),
+    ["main", "test-role-worker"]
+  );
+});
+
 test("register 拒绝未安装角色、未知 Role Agent 和 main", async () => {
   const root = createTempDirectory();
   const role = await createInstalledRole(root);

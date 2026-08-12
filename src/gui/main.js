@@ -1,11 +1,71 @@
 // Electron 主进程：负责创建 GUI 窗口和 IPC 路由，业务调用交给 service 层。
 const path = require("node:path");
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const os = require("node:os");
+const { app, BrowserWindow, clipboard, ipcMain, shell } = require("electron");
 const { loadConfig } = require("../config");
+const { createInstallDiagnosticLogger } = require("../utils/installDiagnosticLogger");
+const { getCommandEnv } = require("../utils/shell");
+const {
+  createEnvironmentResetService
+} = require("../core/environment-reset/resetService");
+const conversationServiceModule = require("./services/conversationService");
 const installerService = require("./services/installerService");
+const roleService = require("./services/roleService");
 const { getProviderApiKeyGuidance } = require("./providerApiKeyGuidance");
 
 let mainWindow = null;
+let installDiagnosticLogger = null;
+let conversationService = conversationServiceModule;
+let environmentResetService = null;
+
+function getInstallLogsDirectory() {
+  return path.join(app.getPath("userData"), "logs");
+}
+
+function getInstallDiagnosticLogPath() {
+  return path.join(getInstallLogsDirectory(), "openclaw-install-debug.log");
+}
+
+function loadInstallerConfig() {
+  return loadConfig({
+    diagnosticLogPath: getInstallDiagnosticLogPath()
+  });
+}
+
+function initializeInstallDiagnostics() {
+  installDiagnosticLogger = createInstallDiagnosticLogger({
+    logPath: getInstallDiagnosticLogPath(),
+    homeDir: os.homedir()
+  });
+  installDiagnosticLogger.event("electron_runtime", {
+    appIsPackaged: app.isPackaged,
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    electronVersion: process.versions.electron,
+    nodeVersion: process.versions.node,
+    execPath: process.execPath,
+    resourcesPath: process.resourcesPath,
+    cwd: process.cwd(),
+    home: process.env.HOME || null,
+    shell: process.env.SHELL || null,
+    osHomeDir: os.homedir(),
+    originalPath: process.env.PATH || "",
+    finalCommandPath: getCommandEnv(process.env).PATH
+  });
+  conversationService = conversationServiceModule.createConversationService(
+    undefined,
+    {
+      conversationOptions: {
+        diagnosticLogger: installDiagnosticLogger
+      }
+    }
+  );
+  environmentResetService = createEnvironmentResetService({
+    homeDir: os.homedir(),
+    diagnosticLogger: installDiagnosticLogger
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -33,13 +93,13 @@ ipcMain.handle("doctor:run", async () => {
 });
 
 ipcMain.handle("install:run", async () => {
-  return installerService.runInstall(loadConfig(), (stepUpdate) => {
+  return installerService.runInstall(loadInstallerConfig(), (stepUpdate) => {
     sendProgress("install:progress", stepUpdate);
   });
 });
 
 ipcMain.handle("update:run", async () => {
-  return installerService.runUpdate(loadConfig(), (stepUpdate) => {
+  return installerService.runUpdate(loadInstallerConfig(), (stepUpdate) => {
     sendProgress("install:progress", stepUpdate);
   });
 });
@@ -49,7 +109,7 @@ ipcMain.handle("version:check", async () => {
 });
 
 ipcMain.handle("setup:run", async () => {
-  return installerService.runSetup(loadConfig(), (stepUpdate) => {
+  return installerService.runSetup(loadInstallerConfig(), (stepUpdate) => {
     sendProgress("setup:progress", stepUpdate);
   });
 });
@@ -59,7 +119,9 @@ ipcMain.handle("configure:run", async () => {
 });
 
 ipcMain.handle("quick-configure:run", async (event, options) => {
-  return installerService.runQuickConfigure(options || {});
+  return installerService.runQuickConfigure(options || {}, {
+    diagnosticLogger: installDiagnosticLogger
+  });
 });
 
 ipcMain.handle("config-state:read", async () => {
@@ -79,11 +141,252 @@ ipcMain.handle("configure:done-check", async () => {
 });
 
 ipcMain.handle("dashboard:open", async () => {
-  return installerService.openDashboard();
+  const result = await installerService.openDashboard({
+    diagnosticLogger: installDiagnosticLogger,
+    readDashboardClipboard: () => clipboard.readText(),
+    writeDashboardClipboard: (value) => clipboard.writeText(value)
+  });
+
+  if (!result.ok || typeof result.dashboardUrl !== "string") {
+    return {
+      success: false,
+      ok: false,
+      code: result.code || null,
+      message: result.message || "控制台打开失败，请稍后重试。"
+    };
+  }
+
+  try {
+    await shell.openExternal(result.dashboardUrl);
+    if (installDiagnosticLogger) {
+      installDiagnosticLogger.event("dashboard_browser_opened", {
+        opened: true
+      });
+    }
+    return {
+      success: true,
+      ok: true,
+      message: "已在默认浏览器中打开 OpenClaw 控制台，请在浏览器中完成连接。"
+    };
+  } catch (error) {
+    if (installDiagnosticLogger) {
+      installDiagnosticLogger.event("dashboard_browser_opened", {
+        opened: false,
+        failureType: "open_external_failed"
+      });
+    }
+    return {
+      success: false,
+      ok: false,
+      message: "控制台地址已准备好，但默认浏览器打开失败，请稍后重试。"
+    };
+  }
 });
 
 ipcMain.handle("dashboard:stop", async () => {
   return installerService.stopDashboard();
+});
+
+ipcMain.handle("role-marketplace:list", async () => {
+  try {
+    return await roleService.listMarketplaceRoles();
+  } catch (error) {
+    return {
+      ok: false,
+      roles: [],
+      invalidRoleCount: 0,
+      message: "角色列表暂时无法加载，请稍后重试。"
+    };
+  }
+});
+
+ipcMain.handle("my-roles:list", async () => {
+  try {
+    return await roleService.listMyRoles();
+  } catch (error) {
+    return {
+      ok: false,
+      roles: [],
+      message: "我的角色暂时无法加载，请稍后重试。"
+    };
+  }
+});
+
+ipcMain.handle("role-marketplace:install", async (event, roleId) => {
+  if (typeof roleId !== "string" || !roleId.trim()) {
+    return {
+      ok: false,
+      roleId: null,
+      installed: false,
+      alreadyInstalled: false,
+      message: "角色标识无效，无法安装。",
+      marketplace: null
+    };
+  }
+
+  try {
+    return await roleService.installMarketplaceRole(roleId.trim());
+  } catch (error) {
+    return {
+      ok: false,
+      roleId: null,
+      installed: false,
+      alreadyInstalled: false,
+      message: "角色安装未完成，请稍后重试。",
+      marketplace: null
+    };
+  }
+});
+
+ipcMain.handle("role-marketplace:enable", async (event, roleId) => {
+  if (typeof roleId !== "string" || !roleId.trim()) {
+    return {
+      ok: false,
+      roleId: null,
+      installed: false,
+      enabled: false,
+      alreadyEnabled: false,
+      instanceCount: 0,
+      instances: [],
+      message: "角色标识无效，无法启用。",
+      marketplace: null
+    };
+  }
+
+  try {
+    return await roleService.enableMarketplaceRole(roleId.trim());
+  } catch (error) {
+    return {
+      ok: false,
+      roleId: null,
+      installed: false,
+      enabled: false,
+      alreadyEnabled: false,
+      instanceCount: 0,
+      instances: [],
+      message: "角色启用未完成，请稍后重试。",
+      marketplace: null
+    };
+  }
+});
+
+ipcMain.handle("chat-center:list", async () => {
+  try {
+    return await conversationService.listChatConversations();
+  } catch (error) {
+    return {
+      ok: false,
+      conversations: [],
+      message: "聊天列表暂时无法加载，请稍后重试。"
+    };
+  }
+});
+
+ipcMain.handle("agent-chat:create", async (event, instanceId, title) => {
+  if (
+    typeof instanceId !== "string" ||
+    !instanceId.trim() ||
+    (title !== undefined && typeof title !== "string")
+  ) {
+    return safeAgentChatError("新聊天参数无效。");
+  }
+  try {
+    return await conversationService.createNewAgentConversation(
+      instanceId.trim(),
+      title
+    );
+  } catch (error) {
+    return safeAgentChatError("新聊天创建未完成，请稍后重试。");
+  }
+});
+
+ipcMain.handle("agent-chat:open-existing", async (event, conversationId) => {
+  if (typeof conversationId !== "string" || !conversationId.trim()) {
+    return safeAgentChatError("聊天标识无效。");
+  }
+  try {
+    return await conversationService.openChatConversation(
+      conversationId.trim()
+    );
+  } catch (error) {
+    return safeAgentChatError("暂时无法打开这段聊天，请稍后重试。");
+  }
+});
+
+ipcMain.handle("agent-chat:messages", async (
+  event,
+  instanceId,
+  conversationId,
+  pagination
+) => {
+  if (
+    typeof instanceId !== "string" ||
+    !instanceId.trim() ||
+    typeof conversationId !== "string" ||
+    !conversationId.trim()
+  ) {
+    return safeAgentChatError("Conversation 标识无效。");
+  }
+  if (
+    pagination !== undefined &&
+    (!pagination || typeof pagination !== "object" || Array.isArray(pagination))
+  ) {
+    return safeAgentChatError("消息分页参数无效。");
+  }
+  try {
+    return await conversationService.listConversationMessages(
+      instanceId.trim(),
+      conversationId.trim(),
+      pagination || {}
+    );
+  } catch (error) {
+    return safeAgentChatError("暂时无法读取对话消息，请稍后重试。");
+  }
+});
+
+ipcMain.handle("agent-chat:send", async (
+  event,
+  instanceId,
+  conversationId,
+  content
+) => {
+  if (
+    typeof instanceId !== "string" ||
+    !instanceId.trim() ||
+    typeof conversationId !== "string" ||
+    !conversationId.trim() ||
+    typeof content !== "string"
+  ) {
+    return safeAgentChatError("消息发送参数无效。");
+  }
+  try {
+    return await conversationService.sendConversationMessage(
+      instanceId.trim(),
+      conversationId.trim(),
+      content
+    );
+  } catch (error) {
+    return safeAgentChatError("消息发送未完成，请稍后重试。");
+  }
+});
+
+ipcMain.handle("agent-chat:reconcile", async (event, instanceId, conversationId) => {
+  if (
+    typeof instanceId !== "string" ||
+    !instanceId.trim() ||
+    typeof conversationId !== "string" ||
+    !conversationId.trim()
+  ) {
+    return safeAgentChatError("Conversation 标识无效。");
+  }
+  try {
+    return await conversationService.reconcileAgentConversation(
+      instanceId.trim(),
+      conversationId.trim()
+    );
+  } catch (error) {
+    return safeAgentChatError("对话状态恢复未完成，请稍后重试。");
+  }
 });
 
 ipcMain.handle("external:open", async (event, url) => {
@@ -135,7 +438,7 @@ ipcMain.handle("provider-api-key:open", async (event, providerId) => {
 });
 
 ipcMain.handle("logs:open", async () => {
-  const result = await installerService.openLogsDirectory();
+  const result = await installerService.openLogsDirectory(getInstallLogsDirectory());
 
   if (!result.ok) {
     return result;
@@ -155,13 +458,51 @@ ipcMain.handle("logs:open", async () => {
   return result;
 });
 
+ipcMain.handle("environment-reset:run", async () => {
+  if (!environmentResetService) {
+    return {
+      ok: false,
+      status: "partial",
+      categories: [],
+      externalOpenClawDetected: false,
+      message: "重置服务尚未准备好，请稍后重试。"
+    };
+  }
+
+  const result = await environmentResetService.reset({
+    onProgress(update) {
+      sendProgress("environment-reset:progress", update);
+    }
+  });
+
+  if (result.ok) {
+    setTimeout(() => {
+      app.relaunch();
+      app.exit(0);
+    }, 1200);
+  }
+  return result;
+});
+
 function sendProgress(channel, stepUpdate) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, stepUpdate);
   }
 }
 
+function safeAgentChatError(message) {
+  return {
+    ok: false,
+    conversation: null,
+    messages: [],
+    hasMore: false,
+    nextBeforeSequence: null,
+    message
+  };
+}
+
 app.whenReady().then(() => {
+  initializeInstallDiagnostics();
   createWindow();
 
   app.on("activate", () => {

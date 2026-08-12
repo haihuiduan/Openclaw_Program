@@ -16,11 +16,14 @@ const { checkTargetDirectory } = require("./checks/targetDirectoryCheck");
 async function runDoctor(config) {
   const checks = [
     checkNodeVersion(config.minNodeVersion),
-    ...(await Promise.all(config.requiredCommands.map(checkCommand))),
+    ...(await Promise.all(config.requiredCommands.map((command) => checkCommand(command, {
+      diagnosticLogger: config.diagnosticLogger,
+      env: config.commandEnv
+    })))),
     checkPlatform(),
     checkArchitecture(),
-    await checkOpenClawStatus(),
-    await checkNpmRegistry(),
+    await checkOpenClawStatus(config),
+    await checkNpmRegistry(config),
     await checkTargetDirectory(config)
   ];
 

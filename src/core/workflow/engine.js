@@ -2,6 +2,8 @@
 const fs = require("node:fs/promises");
 
 const { createInstallLogger } = require("../../utils/installLogger");
+const { createInstallDiagnosticLogger } = require("../../utils/installDiagnosticLogger");
+const { getCommandEnv, resolveCommand } = require("../../utils/shell");
 const { getWorkflow } = require("./registry");
 const {
   clearState,
@@ -9,6 +11,11 @@ const {
   saveState,
   shouldResumeState
 } = require("./runtime");
+
+const FORCED_INSTALL_RESUME_STEPS = new Set([
+  "environment_check",
+  "check_existing_install"
+]);
 
 async function runWorkflow(workflow, context, onProgress) {
   const definition = getWorkflow(workflow);
@@ -32,17 +39,34 @@ async function runWorkflow(workflow, context, onProgress) {
   ctx.logger = ctx.logger || createInstallLogger({
     logDir: ctx.config.logDir
   });
+  ctx.diagnosticLogger = ctx.diagnosticLogger || createInstallDiagnosticLogger({
+    logPath: ctx.config.diagnosticLogPath
+  });
+  if (typeof ctx.diagnosticLogger.beginDiagnosticRun === "function") {
+    ctx.diagnosticLogger.beginDiagnosticRun({ workflowId: definition.id });
+  }
 
   const savedState = await loadState(ctx);
   if (shouldResumeState(savedState, definition.id, ctx.config)) {
     ctx.resumeState = savedState;
     ctx.resumeFromStep = savedState.failedStep;
-    ctx.completedFromState = new Set(savedState.completedSteps || []);
+    ctx.completedFromState = new Set(
+      (savedState.completedSteps || []).filter(
+        (stepId) => !FORCED_INSTALL_RESUME_STEPS.has(stepId)
+      )
+    );
     ctx.tempState = {
       ...ctx.tempState,
       ...(savedState.tempState || {})
     };
     ctx.logger.info("workflow 从 checkpoint 恢复，失败步骤：" + ctx.resumeFromStep);
+    ctx.diagnosticLogger.event("workflow_checkpoint_resume", {
+      workflowId: definition.id,
+      failedStepId: ctx.resumeFromStep,
+      checkpointSchemaVersion: savedState.schemaVersion || null,
+      checkpointEnvironmentVersion: savedState.environmentVersion || null,
+      forcedSteps: Array.from(FORCED_INSTALL_RESUME_STEPS)
+    });
   } else {
     ctx.completedFromState = new Set();
   }
@@ -50,6 +74,12 @@ async function runWorkflow(workflow, context, onProgress) {
   ctx.logger.info("GUI 安装开始时间：" + new Date().toISOString());
   ctx.logger.info("平台信息：platform=" + process.platform + ", arch=" + process.arch + ", node=" + process.versions.node);
   ctx.logger.info("targetDir：" + ctx.config.targetDir);
+  ctx.diagnosticLogger.event("workflow_start", {
+    workflowId: definition.id,
+    workflowName: definition.label,
+    commandPath: getCommandEnv(process.env).PATH
+  });
+  await diagnoseInstallCommands(ctx);
 
   function emit(step, status, message, startedAt, extra) {
     const stepId = getStepId(step);
@@ -86,6 +116,11 @@ async function runWorkflow(workflow, context, onProgress) {
       const step = steps[index];
       const stepId = getStepId(step);
       const startedAt = Date.now();
+      ctx.diagnosticLogger.event("workflow_step_start", {
+        workflowId: definition.id,
+        stepId,
+        stepName: step.label || stepId
+      });
 
       if (ctx.completedFromState.has(stepId)) {
         emit(step, "skipped", "已从 checkpoint 恢复，跳过已完成步骤。", startedAt, {
@@ -101,6 +136,12 @@ async function runWorkflow(workflow, context, onProgress) {
         emit(step, "fail", gateResult.message, startedAt);
         ctx.failedStep = stepId;
         ctx.runtimeFailed = true;
+        const failure = buildFailureDetails(step, gateResult, gateResult.message);
+        ctx.diagnosticLogger.error("workflow_step_failure", {
+          workflowId: definition.id,
+          ...failure,
+          durationMs: Date.now() - startedAt
+        });
         await saveState(ctx, {
           failedStep: stepId
         });
@@ -111,7 +152,9 @@ async function runWorkflow(workflow, context, onProgress) {
           steps: ctx.steps,
           finalMessage: gateResult.finalMessage || "OpenClaw 安装失败。",
           error: gateResult.message,
-          logPath: ctx.logger.getLogPath()
+          ...failure,
+          logPath: ctx.logger.getLogPath(),
+          diagnosticLogPath: ctx.diagnosticLogger.getLogPath()
         };
       }
 
@@ -143,6 +186,12 @@ async function runWorkflow(workflow, context, onProgress) {
         emit(step, "fail", message, startedAt);
         ctx.failedStep = stepId;
         ctx.runtimeFailed = true;
+        const failure = buildFailureDetails(step, result, message);
+        ctx.diagnosticLogger.error("workflow_step_failure", {
+          workflowId: definition.id,
+          ...failure,
+          durationMs: Date.now() - startedAt
+        });
         await saveState(ctx, {
           failedStep: stepId
         });
@@ -153,11 +202,19 @@ async function runWorkflow(workflow, context, onProgress) {
           steps: ctx.steps,
           finalMessage: result && result.finalMessage ? result.finalMessage : "OpenClaw 安装失败。",
           error: message,
-          logPath: ctx.logger.getLogPath()
+          ...failure,
+          logPath: ctx.logger.getLogPath(),
+          diagnosticLogPath: ctx.diagnosticLogger.getLogPath()
         };
       }
 
       emit(step, "success", result.message, startedAt);
+      ctx.diagnosticLogger.event("workflow_step_success", {
+        workflowId: definition.id,
+        stepId,
+        stepName: step.label || stepId,
+        durationMs: Date.now() - startedAt
+      });
       await saveState(ctx, {
         failedStep: null
       });
@@ -182,7 +239,8 @@ async function runWorkflow(workflow, context, onProgress) {
             ok: true,
             steps: ctx.steps,
             finalMessage: ctx.installedMessage + "。本次未重复安装。",
-            logPath: ctx.logger.getLogPath()
+            logPath: ctx.logger.getLogPath(),
+            diagnosticLogPath: ctx.diagnosticLogger.getLogPath()
           };
         }
       }
@@ -197,7 +255,8 @@ async function runWorkflow(workflow, context, onProgress) {
       steps: ctx.steps,
       finalMessage: getSuccessMessage(ctx),
       version: ctx.version,
-      logPath: ctx.logger.getLogPath()
+      logPath: ctx.logger.getLogPath(),
+      diagnosticLogPath: ctx.diagnosticLogger.getLogPath()
     };
   } finally {
     if (!ctx.runtimeFailed) {
@@ -246,9 +305,86 @@ async function runStepSafely(step, ctx) {
     return {
       success: false,
       message: error && error.message ? error.message : String(error),
-      finalMessage: error && error.finalMessage ? error.finalMessage : "OpenClaw 安装失败。"
+      finalMessage: error && error.finalMessage ? error.finalMessage : "OpenClaw 安装失败。",
+      errorCode: resolveThrownErrorCode(error),
+      technicalMessage: error && error.message ? error.message : "步骤执行异常",
+      commandResult: error && error.result ? error.result : null
     };
   }
+}
+
+async function diagnoseInstallCommands(ctx) {
+  if (!["install", "setup"].includes(ctx.workflow)) {
+    return;
+  }
+
+  const commands = ["node", "npm", "npx", "git", "bash", "zsh", "curl", "openclaw"];
+
+  for (const command of commands) {
+    try {
+      const resolution = await resolveCommand(command, {
+        diagnosticLogger: ctx.diagnosticLogger
+      });
+      ctx.diagnosticLogger.event("command_resolution", resolution);
+    } catch (error) {
+      ctx.diagnosticLogger.error("command_resolution", {
+        command,
+        found: false,
+        resolvedPath: null,
+        exitCode: null,
+        signal: null,
+        spawnError: error && error.code ? { code: error.code } : { code: "UNKNOWN" }
+      });
+    }
+  }
+}
+
+function buildFailureDetails(step, result, fallbackMessage) {
+  const commandResult = result && result.commandResult ? result.commandResult : null;
+  const spawnError = commandResult && commandResult.spawnError;
+  const errorCode = result && result.errorCode
+    ? result.errorCode
+    : spawnError && spawnError.code === "ENOENT"
+      ? "OPENCLAW_INSTALL_COMMAND_NOT_FOUND"
+      : "OPENCLAW_INSTALL_STEP_FAILED";
+
+  return {
+    failedStepId: getStepId(step),
+    failedStepName: step.label || getStepId(step),
+    errorCode,
+    userMessage: result && result.userMessage ? result.userMessage : fallbackMessage,
+    technicalMessage: result && result.technicalMessage
+      ? result.technicalMessage
+      : fallbackMessage,
+    commandResult: summarizeCommandResult(commandResult)
+  };
+}
+
+function summarizeCommandResult(result) {
+  if (!result) {
+    return null;
+  }
+
+  return {
+    command: result.command,
+    exitCode: result.exitCode === undefined ? result.code : result.exitCode,
+    signal: result.signal || null,
+    timedOut: Boolean(result.timedOut),
+    spawnError: result.spawnError || null,
+    durationMs: result.durationMs
+  };
+}
+
+function resolveThrownErrorCode(error) {
+  if (error && error.code === "EACCES") {
+    return "OPENCLAW_INSTALL_PERMISSION_DENIED";
+  }
+
+  if (error && error.code === "ENOENT") {
+    return "OPENCLAW_INSTALL_COMMAND_NOT_FOUND";
+  }
+
+  return error && error.code ? String(error.code) : "OPENCLAW_INSTALL_STEP_FAILED";
 }
 
 async function evaluateStepGates(step, ctx) {

@@ -18,7 +18,9 @@ async function createTargetDirectory(config) {
   }
 
   // -p 表示目录已存在也不报错，适合重复执行安装初始化。
-  await runCommand("mkdir", ["-p", config.targetDir]);
+  await runCommand("mkdir", ["-p", config.targetDir], {
+    diagnosticLogger: config.diagnosticLogger
+  });
 
   return {
     name: "创建安装目录",

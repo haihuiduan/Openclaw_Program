@@ -30,8 +30,8 @@ const commandMeta = {
  * 输入：命令名，例如 "git"。
  * 输出：标准检查结果对象，供 doctor 汇总。
  */
-async function checkCommand(command) {
-  const exists = await commandExists(command);
+async function checkCommand(command, options = {}) {
+  const exists = await commandExists(command, options);
   const meta = commandMeta[command] || {
     name: `系统命令：${command}`,
     category: "dependency",

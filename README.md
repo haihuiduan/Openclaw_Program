@@ -1,5 +1,10 @@
 # OpenClaw 工具箱
 
+> 当前开发状态、未提交改动和最高优先级以
+> [`docs/CURRENT_STATUS.md`](docs/CURRENT_STATUS.md) 为准；新会话请先读取
+> [`docs/PROJECT_HANDOFF.md`](docs/PROJECT_HANDOFF.md)。本文主要保留用户入口、
+> 命令说明和已经进入代码的能力概览。
+
 ## 项目简介
 
 OpenClaw 工具箱是一个面向 macOS 用户的 OpenClaw 安装、配置与控制台管理工具。
@@ -284,6 +289,14 @@ node bin/cli.js executions inspect <run-id>
 node bin/cli.js executions run-task <task-id> --confirm
 node bin/cli.js executions retry <run-id> --confirm
 node bin/cli.js executions reconcile
+node bin/cli.js conversations list
+node bin/cli.js conversations inspect <conversation-id>
+node bin/cli.js conversations create <conversation-id> --instance <instance-id>
+node bin/cli.js conversations send <conversation-id> --message <text>
+node bin/cli.js conversations send <conversation-id> --stdin
+node bin/cli.js conversations messages <conversation-id> [--limit <1-100>] [--before-sequence <n>]
+node bin/cli.js conversations archive <conversation-id> --confirm
+node bin/cli.js conversations reconcile
 node bin/cli.js help
 node bin/cli.js version
 ```
@@ -309,6 +322,12 @@ Task Execution 首版采用前台全局串行执行。`executionMode=auto` 只�
 后台调度、Manager 自动拆分、Agent-to-Agent 调用或 checkpoint 恢复。Execution 默认
 只保存安全摘要，不保存完整 Prompt、stdout、stderr、API Key、token、secret、
 workspacePath 或 agentDir。
+
+Conversation Core 首版提供单个用户与单个 registered Agent Instance 的前台串行对话。
+每个 Conversation 固定复用一个 Session Key，但 CLI 的 list/inspect 不显示该 Key 或完整
+Session 标识。消息只保存清理后的安全正文；当前不支持 Team 群聊、retry、编辑、撤回、
+delete、unarchive、流式、后台发送、附件或 Memory。Conversation 与 Task Execution
+共用全局 Agent-call lease，因此二者不会并发调用 OpenClaw Agent。
 
 Project / Task Core 首版把 Project 绑定到创建时的 Team 安全快照；Team 后续变化不会自动
 改写已有 Project，用户只能在预览差异后显式同步。Task 只支持 pending、completed、
@@ -348,6 +367,13 @@ cancelled 三种持久状态，并动态计算依赖阻塞；`auto`、并发与�
 | `openclaw-installer teams remove-member <team-id> <instance-id>` | 移除非 Manager 成员 |
 | `openclaw-installer teams set-manager <team-id> <instance-id>` | 指定已在 Team 中的 registered 成员为 Manager |
 | `openclaw-installer teams delete <team-id> --confirm` | 只删除 Team State，不删除 Instance 或 workspace |
+| `openclaw-installer conversations list` | 列出 Conversation 安全摘要，不显示正文或 Session 标识 |
+| `openclaw-installer conversations inspect <conversation-id>` | 查看 Conversation 元数据和本地健康状态 |
+| `openclaw-installer conversations create <conversation-id> --instance <instance-id>` | 为 registered Instance 创建单 Agent Conversation |
+| `openclaw-installer conversations send <conversation-id> --message <text>` | 前台发送一条安全文本消息 |
+| `openclaw-installer conversations messages <conversation-id>` | 分页查看清理后的安全消息正文 |
+| `openclaw-installer conversations archive <conversation-id> --confirm` | 归档 Conversation 并设为只读 |
+| `openclaw-installer conversations reconcile` | 修复遗留 active Message 和本地 Session 认知 |
 | `openclaw-installer help` | 查看帮助信息 |
 | `openclaw-installer version` | 查看当前安装助手版本 |
 
@@ -394,6 +420,8 @@ src/core/installer                 安装计划、安装执行和安装日志接
 src/core/configure                 OpenClaw 官方配置向导封装
 src/core/verify                    安装后基础验收
 src/core/setup                     doctor + install 的流程编排
+src/core/conversations             Conversation、Message State 与单 Agent 对话管理
+src/core/openclaw-agent            Conversation 与 Execution 共用的 Agent-call lease
 
 src/core/workflow                  安装 workflow 引擎、运行时和步骤
 src/core/workflow/steps            环境检测、下载脚本、执行脚本、验证安装等步骤

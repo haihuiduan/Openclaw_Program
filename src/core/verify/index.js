@@ -1,5 +1,5 @@
 // verify 模块：安装和配置后的基础验收，只检查，不安装、不配置、不写文件。
-const { commandExists, runCommand } = require("../../utils/shell");
+const { resolveCommand, runCommand } = require("../../utils/shell");
 
 async function runVerify(config = {}) {
   if (config.dryRun) {
@@ -15,9 +15,12 @@ async function runVerify(config = {}) {
   }
 
   const checks = [];
-  const installed = await commandExists("openclaw");
+  const resolution = await resolveCommand("openclaw", {
+    timeoutMs: 3000,
+    env: config.commandEnv
+  });
 
-  if (!installed) {
+  if (!resolution.found || !resolution.resolvedPath) {
     checks.push({
       name: "OpenClaw 命令",
       ok: false,
@@ -38,9 +41,10 @@ async function runVerify(config = {}) {
     message: "已找到"
   });
 
-  const versionResult = await runCommand("openclaw", ["--version"], {
+  const versionResult = await runCommand(resolution.resolvedPath, ["--version"], {
     allowFailure: true,
-    timeoutMs: 5000
+    timeoutMs: 5000,
+    env: config.commandEnv
   });
   const version = sanitizeOutput(versionResult.stdout + versionResult.stderr);
 
@@ -65,9 +69,10 @@ async function runVerify(config = {}) {
     message: version
   });
 
-  const configFileResult = await runCommand("openclaw", ["config", "file"], {
+  const configFileResult = await runCommand(resolution.resolvedPath, ["config", "file"], {
     allowFailure: true,
-    timeoutMs: 5000
+    timeoutMs: 5000,
+    env: config.commandEnv
   });
   const configPath = sanitizeOutput(configFileResult.stdout + configFileResult.stderr);
 

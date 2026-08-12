@@ -9,26 +9,32 @@
   <body>
     <main class="app-shell app-layout">
       <aside class="sidebar" aria-label="OpenClaw 工具箱导航">
-        <div class="sidebar-brand">
-          <span>OpenClaw</span>
-          <strong>工具箱</strong>
+        <div class="sidebar-topline">
+          <div class="sidebar-brand" aria-label="OpenClaw 工具箱">
+            <span class="sidebar-brand-full">OpenClaw</span>
+            <strong class="sidebar-brand-full">工具箱</strong>
+            <strong class="sidebar-brand-compact" aria-hidden="true">OC</strong>
+          </div>
+          <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="收起工具箱导航" title="收起工具箱导航" aria-expanded="true">‹</button>
         </div>
 
         <div class="sidebar-section">
           <p class="sidebar-section-title">核心入口</p>
-          <button type="button" class="sidebar-link active" id="homeButton" data-page="home">首页</button>
-          <button type="button" class="sidebar-link" data-page="configure">配置 API Key</button>
-          <button type="button" class="sidebar-link" data-page="troubleshoot">问题排查</button>
+          <button type="button" class="sidebar-link active" id="homeButton" data-page="home" aria-label="首页" title="首页"><span class="sidebar-link-icon" aria-hidden="true">⌂</span><span class="sidebar-link-label">首页</span></button>
+          <button type="button" class="sidebar-link" data-page="configure" aria-label="配置 API Key" title="配置 API Key"><span class="sidebar-link-icon" aria-hidden="true">◇</span><span class="sidebar-link-label">配置 API Key</span></button>
+          <button type="button" class="sidebar-link" data-page="troubleshoot" aria-label="问题排查" title="问题排查"><span class="sidebar-link-icon" aria-hidden="true">?</span><span class="sidebar-link-label">问题排查</span></button>
+          <button type="button" class="sidebar-link" data-page="role-marketplace" aria-label="角色市场" title="角色市场"><span class="sidebar-link-icon" aria-hidden="true">▦</span><span class="sidebar-link-label">角色市场</span></button>
+          <button type="button" class="sidebar-link" data-page="chat-center" aria-label="聊天" title="聊天"><span class="sidebar-link-icon" aria-hidden="true">◌</span><span class="sidebar-link-label">聊天</span></button>
         </div>
 
         <div class="sidebar-bottom">
           <p class="sidebar-section-title">更多</p>
           <div class="about-menu-wrapper">
-            <button type="button" class="sidebar-link sidebar-secondary-link" id="appStage" aria-expanded="false">关于本工具</button>
+            <button type="button" class="sidebar-link sidebar-secondary-link" id="appStage" aria-expanded="false" aria-label="关于本工具" title="关于本工具"><span class="sidebar-link-icon" aria-hidden="true">i</span><span class="sidebar-link-label">关于本工具</span></button>
             <div class="about-menu" id="aboutMenu" hidden></div>
           </div>
           <div class="appearance-menu-wrapper">
-            <button type="button" class="sidebar-link sidebar-secondary-link" id="appearanceButton" aria-expanded="false">夜间模式 <span class="sidebar-link-note" id="appearanceModeLabel">跟随系统</span></button>
+            <button type="button" class="sidebar-link sidebar-secondary-link" id="appearanceButton" aria-expanded="false" aria-label="夜间模式" title="夜间模式"><span class="sidebar-link-icon" aria-hidden="true">◐</span><span class="sidebar-link-label">夜间模式</span><span class="sidebar-link-note" id="appearanceModeLabel">跟随系统</span></button>
             <div class="appearance-menu" id="appearanceMenu" hidden>
               <div class="appearance-menu-title">外观</div>
               <button type="button" class="appearance-menu-option active" data-theme-option="system">跟随系统</button>
@@ -36,7 +42,7 @@
               <button type="button" class="appearance-menu-option" data-theme-option="dark">深色模式</button>
             </div>
           </div>
-          <button type="button" class="sidebar-link sidebar-secondary-link" data-page="settings">设置</button>
+          <button type="button" class="sidebar-link sidebar-secondary-link" data-page="settings" aria-label="设置" title="设置"><span class="sidebar-link-icon" aria-hidden="true">⚙</span><span class="sidebar-link-label">设置</span></button>
           <div class="sidebar-mini-status">
             <span>一切正常</span>
             <strong>v1.0.0</strong>

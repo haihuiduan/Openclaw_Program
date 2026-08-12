@@ -1,5 +1,5 @@
 // 安装 workflow 步骤：检查系统中是否已经存在官方 openclaw 命令。
-const { commandExists, runCommand } = require("../../../utils/shell");
+const { resolveCommand, runCommand } = require("../../../utils/shell");
 
 module.exports = {
   id: "check_existing_install",
@@ -12,7 +12,7 @@ module.exports = {
   retryable: true,
   timeout: 10000,
   async run(ctx) {
-    const existing = await detectExistingOpenClaw();
+    const existing = await detectExistingOpenClaw(ctx);
     ctx.logger.info("已有 OpenClaw 检测：" + JSON.stringify(existing));
 
     if (existing.installed) {
@@ -52,24 +52,35 @@ module.exports = {
   }
 };
 
-async function detectExistingOpenClaw() {
-  const installed = await commandExists("openclaw");
+async function detectExistingOpenClaw(ctx) {
+  const resolution = await resolveCommand("openclaw", {
+    diagnosticLogger: ctx && ctx.diagnosticLogger,
+    env: ctx && ctx.installEnvironment
+  });
 
-  if (!installed) {
+  if (!resolution.found || !resolution.resolvedPath) {
     return {
       installed: false,
       version: null
     };
   }
 
-  const result = await runCommand("openclaw", ["--version"], {
+  const result = await runCommand(resolution.resolvedPath, ["--version"], {
     allowFailure: true,
-    timeoutMs: 3000
+    timeoutMs: 3000,
+    diagnosticLogger: ctx && ctx.diagnosticLogger,
+    env: ctx && ctx.installEnvironment
   });
   const version = (result.stdout + result.stderr).trim().split("\n")[0];
+  const installed = Boolean(
+    result.code === 0 &&
+    !result.timedOut &&
+    !result.spawnError &&
+    version
+  );
 
   return {
-    installed: true,
-    version: result.code === 0 && !result.timedOut && version ? version : null
+    installed,
+    version: installed ? version : null
   };
 }
