@@ -2,8 +2,12 @@
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
+const {
+  INSTALL_ENVIRONMENT_VERSION
+} = require("./npmPrefix");
 
 const DEFAULT_STATE_PATH = path.join(os.homedir(), ".openclaw-installer", "workflow-state.json");
+const WORKFLOW_STATE_SCHEMA_VERSION = 2;
 
 async function saveState(ctx, update = {}) {
   const statePath = getStatePath(ctx);
@@ -77,6 +81,8 @@ function buildState(ctx, update) {
     .filter(Boolean);
 
   return {
+    schemaVersion: WORKFLOW_STATE_SCHEMA_VERSION,
+    environmentVersion: INSTALL_ENVIRONMENT_VERSION,
     workflow: ctx.workflow,
     workflowLabel: ctx.workflowLabel,
     stepProgress,
@@ -108,6 +114,7 @@ function getStatePath(input = {}) {
 
 module.exports = {
   DEFAULT_STATE_PATH,
+  WORKFLOW_STATE_SCHEMA_VERSION,
   clearState,
   loadState,
   resumeWorkflow,

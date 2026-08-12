@@ -1,13 +1,54 @@
 // Electron 主进程：负责创建 GUI 窗口和 IPC 路由，业务调用交给 service 层。
 const path = require("node:path");
+const os = require("node:os");
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const { loadConfig } = require("../config");
+const { createInstallDiagnosticLogger } = require("../utils/installDiagnosticLogger");
+const { getCommandEnv } = require("../utils/shell");
 const conversationService = require("./services/conversationService");
 const installerService = require("./services/installerService");
 const roleService = require("./services/roleService");
 const { getProviderApiKeyGuidance } = require("./providerApiKeyGuidance");
 
 let mainWindow = null;
+let installDiagnosticLogger = null;
+
+function getInstallLogsDirectory() {
+  return path.join(app.getPath("userData"), "logs");
+}
+
+function getInstallDiagnosticLogPath() {
+  return path.join(getInstallLogsDirectory(), "openclaw-install-debug.log");
+}
+
+function loadInstallerConfig() {
+  return loadConfig({
+    diagnosticLogPath: getInstallDiagnosticLogPath()
+  });
+}
+
+function initializeInstallDiagnostics() {
+  installDiagnosticLogger = createInstallDiagnosticLogger({
+    logPath: getInstallDiagnosticLogPath(),
+    homeDir: os.homedir()
+  });
+  installDiagnosticLogger.event("electron_runtime", {
+    appIsPackaged: app.isPackaged,
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    electronVersion: process.versions.electron,
+    nodeVersion: process.versions.node,
+    execPath: process.execPath,
+    resourcesPath: process.resourcesPath,
+    cwd: process.cwd(),
+    home: process.env.HOME || null,
+    shell: process.env.SHELL || null,
+    osHomeDir: os.homedir(),
+    originalPath: process.env.PATH || "",
+    finalCommandPath: getCommandEnv(process.env).PATH
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -35,13 +76,13 @@ ipcMain.handle("doctor:run", async () => {
 });
 
 ipcMain.handle("install:run", async () => {
-  return installerService.runInstall(loadConfig(), (stepUpdate) => {
+  return installerService.runInstall(loadInstallerConfig(), (stepUpdate) => {
     sendProgress("install:progress", stepUpdate);
   });
 });
 
 ipcMain.handle("update:run", async () => {
-  return installerService.runUpdate(loadConfig(), (stepUpdate) => {
+  return installerService.runUpdate(loadInstallerConfig(), (stepUpdate) => {
     sendProgress("install:progress", stepUpdate);
   });
 });
@@ -51,7 +92,7 @@ ipcMain.handle("version:check", async () => {
 });
 
 ipcMain.handle("setup:run", async () => {
-  return installerService.runSetup(loadConfig(), (stepUpdate) => {
+  return installerService.runSetup(loadInstallerConfig(), (stepUpdate) => {
     sendProgress("setup:progress", stepUpdate);
   });
 });
@@ -61,7 +102,9 @@ ipcMain.handle("configure:run", async () => {
 });
 
 ipcMain.handle("quick-configure:run", async (event, options) => {
-  return installerService.runQuickConfigure(options || {});
+  return installerService.runQuickConfigure(options || {}, {
+    diagnosticLogger: installDiagnosticLogger
+  });
 });
 
 ipcMain.handle("config-state:read", async () => {
@@ -339,7 +382,7 @@ ipcMain.handle("provider-api-key:open", async (event, providerId) => {
 });
 
 ipcMain.handle("logs:open", async () => {
-  const result = await installerService.openLogsDirectory();
+  const result = await installerService.openLogsDirectory(getInstallLogsDirectory());
 
   if (!result.ok) {
     return result;
@@ -377,6 +420,7 @@ function safeAgentChatError(message) {
 }
 
 app.whenReady().then(() => {
+  initializeInstallDiagnostics();
   createWindow();
 
   app.on("activate", () => {

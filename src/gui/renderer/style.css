@@ -733,6 +733,10 @@ h2 {
   transition: width 160ms ease;
 }
 
+.install-failure-details {
+  margin-top: 14px;
+}
+
 .install-progress-row {
   display: flex;
   gap: 10px;

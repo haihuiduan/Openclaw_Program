@@ -214,6 +214,19 @@ test("配置命令失败时不能标记为已验证", () => {
   assert.ok(failureIndex < verifyIndex);
 });
 
+test("DeepSeek 快速配置只提供当前正式模型标识", () => {
+  const source = readRenderer();
+  const modelOptions = source.slice(
+    source.indexOf("const providerModels"),
+    source.indexOf("function populateModelOptions")
+  );
+
+  assert.match(modelOptions, /deepseek\/deepseek-v4-pro/);
+  assert.match(modelOptions, /deepseek\/deepseek-v4-flash/);
+  assert.doesNotMatch(modelOptions, /\["deepseek-chat"/);
+  assert.doesNotMatch(modelOptions, /\["deepseek-reasoner"/);
+});
+
 
 test("启动状态识别不会锁住左侧导航或页面跳转", () => {
   const source = readRenderer();
@@ -225,6 +238,30 @@ test("启动状态识别不会锁住左侧导航或页面跳转", () => {
   assert.doesNotMatch(updateHomeButtonState, /isProbingStartup/);
   assert.doesNotMatch(updateSidebarState, /isProbingStartup/);
   assert.match(updateSidebarState, /button.disabled = wizardState.isBusy/);
+});
+
+test("首页只有真实版本命令成功时才保持 OpenClaw 已安装状态", () => {
+  const source = readRenderer();
+  const refresh = getFunctionBlock(source, "refreshVersionInfo");
+  const startupProbe = getFunctionBlock(source, "probeStartupState");
+  const verifySync = getFunctionBlock(source, "syncVerifyStatus");
+
+  assert.match(
+    refresh,
+    /if \(version\.installed\)[\s\S]*else\s*{[\s\S]*installStatus = "未安装"/
+  );
+  assert.match(
+    refresh,
+    /catch \(error\)[\s\S]*installStatus = "安装异常"/
+  );
+  assert.doesNotMatch(
+    startupProbe,
+    /commandCheck && commandCheck\.ok[\s\S]*installStatus = "已安装"/
+  );
+  assert.match(
+    verifySync,
+    /versionCheck && !versionCheck\.ok[\s\S]*installStatus = "安装异常"/
+  );
 });
 
 test("可选顶部与侧栏节点缺失时初始化绑定有空值保护", () => {
@@ -906,4 +943,47 @@ test("角色市场标签和聊天中心样式支持深色模式、窄窗口与�
   assert.match(css, /grid-template-columns: 300px minmax\(0, 1fr\)/);
   assert.match(css, /\.chat-picker-mode-tabs/);
   assert.match(css, /\.chat-center-has-selection \.chat-center-sidebar/);
+});
+
+test("准备 OpenClaw 订阅真实安装进度并展示当前 workflow 步骤", () => {
+  const source = readRenderer();
+  const preload = readFile("src/gui/preload.js");
+  const main = readFile("src/gui/main.js");
+
+  assert.match(source, /onInstallProgress/);
+  assert.match(source, /renderInstallProgress/);
+  assert.match(source, /environment_check:\s*"环境检查"/);
+  assert.match(source, /download_script:\s*"下载脚本"/);
+  assert.match(source, /execute_script:\s*"执行安装"/);
+  assert.match(source, /verify_installation:\s*"安装验证"/);
+  assert.match(preload, /subscribeToProgress\("install:progress"/);
+  assert.match(main, /sendProgress\("install:progress"/);
+});
+
+test("准备失败页面展示安全失败步骤、原因、错误码和安装记录入口", () => {
+  const source = readRenderer();
+  const failure = getFunctionBlock(source, "renderPrepareFailure");
+
+  assert.match(failure, /failedStepName|failedStepId/);
+  assert.match(failure, /userMessage/);
+  assert.match(failure, /errorCode/);
+  assert.match(failure, /打开安装记录/);
+  assert.match(failure, /查看安装记录后可以看到 npm 原因/);
+  assert.match(failure, /openLogs/);
+  assert.doesNotMatch(failure, /npmInstallerLogTail|npmInstallerLogPath/);
+  assert.doesNotMatch(failure, /technicalMessage|commandResult|stderr|stdout|stack/);
+});
+
+test("Electron Main 将诊断日志固定到 userData logs 且 Core 不直接依赖 Electron", () => {
+  const main = readFile("src/gui/main.js");
+  const diagnosticLogger = readFile("src/utils/installDiagnosticLogger.js");
+  const workflow = readFile("src/core/workflow/engine.js");
+
+  assert.match(main, /app\.getPath\("userData"\)/);
+  assert.match(main, /openclaw-install-debug\.log/);
+  assert.match(main, /diagnosticLogPath/);
+  assert.match(main, /appIsPackaged/);
+  assert.match(main, /finalCommandPath/);
+  assert.doesNotMatch(diagnosticLogger, /require\("electron"\)/);
+  assert.doesNotMatch(workflow, /require\("electron"\)/);
 });

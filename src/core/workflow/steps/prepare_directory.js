@@ -12,7 +12,10 @@ module.exports = {
   retryable: true,
   timeout: 10000,
   async run(ctx) {
-    const result = await createTargetDirectory(ctx.config);
+    const result = await createTargetDirectory({
+      ...ctx.config,
+      diagnosticLogger: ctx.diagnosticLogger
+    });
     ctx.logger.info("目标目录准备完成：" + result.detail);
 
     return {

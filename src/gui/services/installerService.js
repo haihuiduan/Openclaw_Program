@@ -6,7 +6,13 @@ const path = require("node:path");
 const { runDoctor: runCoreDoctor } = require("../../core/doctor");
 const { runVerify: runCoreVerify } = require("../../core/verify");
 const { runWorkflow } = require("../../core/workflow/engine");
-const { commandExists, runCommand, runDetachedCommand } = require("../../utils/shell");
+const { sanitizeDiagnosticText } = require("../../utils/installDiagnosticLogger");
+const {
+  commandExists,
+  resolveCommand,
+  runCommand,
+  runDetachedCommand
+} = require("../../utils/shell");
 
 async function runDoctor(config, options = {}) {
   const report = await runCoreDoctor(config);
@@ -35,10 +41,14 @@ function runUpdate(configOrProgress, maybeOnProgress) {
   }, onProgress);
 }
 
-async function checkOpenClawVersion() {
-  const installed = await commandExists("openclaw");
+async function checkOpenClawVersion(options = {}) {
+  const resolution = await resolveCommand("openclaw", {
+    timeoutMs: 3000,
+    env: options.commandEnv,
+    commandEnvOptions: options.commandEnvOptions
+  });
 
-  if (!installed) {
+  if (!resolution.found || !resolution.resolvedPath) {
     return {
       installed: false,
       currentVersion: null,
@@ -49,16 +59,43 @@ async function checkOpenClawVersion() {
     };
   }
 
-  const currentResult = await runCommand("openclaw", ["--version"], {
-    allowFailure: true,
-    timeoutMs: 5000
-  });
-  const currentText = sanitizeSingleLine(currentResult.stdout + currentResult.stderr);
-  const currentVersion = currentResult.code === 0 && !currentResult.timedOut ? currentText : null;
+  const currentResult = await runCommand(
+    resolution.resolvedPath,
+    ["--version"],
+    {
+      allowFailure: true,
+      timeoutMs: 5000,
+      env: options.commandEnv,
+      commandEnvOptions: options.commandEnvOptions
+    }
+  );
+  const currentText = sanitizeSingleLine(
+    currentResult.stdout + currentResult.stderr
+  );
+  const currentVersion =
+    currentResult.code === 0 &&
+    !currentResult.timedOut &&
+    !currentResult.spawnError &&
+    currentText
+      ? currentText
+      : null;
+
+  if (!currentVersion) {
+    return {
+      installed: false,
+      currentVersion: null,
+      latestVersion: null,
+      updateAvailable: false,
+      canCheckLatest: false,
+      message: "检测到 OpenClaw 命令文件，但无法正常执行。"
+    };
+  }
 
   const latestResult = await runCommand("npm", ["view", "openclaw", "version"], {
     allowFailure: true,
-    timeoutMs: 6000
+    timeoutMs: 6000,
+    env: options.commandEnv,
+    commandEnvOptions: options.commandEnvOptions
   });
   const latestVersion = latestResult.code === 0 && !latestResult.timedOut
     ? sanitizeSingleLine(latestResult.stdout + latestResult.stderr)
@@ -74,6 +111,19 @@ async function checkOpenClawVersion() {
     message: latestVersion
       ? (updateAvailable ? "检测到 OpenClaw 有新版本。" : "OpenClaw 已是最新版本。")
       : "暂时无法检查最新版本。"
+  };
+}
+
+async function resolveOpenClawExecutable(options = {}) {
+  const resolution = await resolveCommand("openclaw", {
+    timeoutMs: 3000,
+    env: options.commandEnv,
+    commandEnvOptions: options.commandEnvOptions
+  });
+
+  return {
+    ok: Boolean(resolution.found && resolution.resolvedPath),
+    executablePath: resolution.resolvedPath || "openclaw"
   };
 }
 
@@ -392,13 +442,15 @@ async function runQuickConfigure(options = {}) {
 }
 
 function sanitizeCommandOutput(output, secrets = []) {
-  let text = String(output || "").trim();
+  let text = String(output || "");
 
   for (const secret of secrets) {
     if (secret) {
       text = text.split(secret).join("[已隐藏]");
     }
   }
+
+  text = sanitizeDiagnosticText(text).trim();
 
   if (!text) {
     return "官方命令未返回详细错误。";
@@ -528,8 +580,8 @@ async function checkConfigureDoneFlag() {
   }
 }
 
-async function openLogsDirectory() {
-  const logPath = path.join(os.homedir(), ".openclaw-installer", "logs");
+async function openLogsDirectory(preferredLogPath) {
+  const logPath = preferredLogPath || path.join(os.homedir(), ".openclaw-installer", "logs");
 
   try {
     const stat = await fs.stat(logPath);

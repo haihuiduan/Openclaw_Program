@@ -1,10 +1,13 @@
 // OpenClaw 安装状态检测：只判断是否已安装，不做更新或修复。
-const { commandExists, runCommand } = require("../../../utils/shell");
+const { resolveCommand, runCommand } = require("../../../utils/shell");
 
-async function checkOpenClawStatus() {
-  const installed = await commandExists("openclaw");
+async function checkOpenClawStatus(options = {}) {
+  const resolution = await resolveCommand("openclaw", {
+    diagnosticLogger: options.diagnosticLogger,
+    env: options.commandEnv
+  });
 
-  if (!installed) {
+  if (!resolution.found || !resolution.resolvedPath) {
     return {
       name: "OpenClaw",
       ok: true,
@@ -18,9 +21,11 @@ async function checkOpenClawStatus() {
     };
   }
 
-  const versionResult = await runCommand("openclaw", ["--version"], {
+  const versionResult = await runCommand(resolution.resolvedPath, ["--version"], {
     allowFailure: true,
-    timeoutMs: 3000
+    timeoutMs: 3000,
+    diagnosticLogger: options.diagnosticLogger,
+    env: options.commandEnv
   });
   const version = (versionResult.stdout + versionResult.stderr).trim().split("\n")[0];
 
@@ -41,13 +46,13 @@ async function checkOpenClawStatus() {
   return {
     name: "OpenClaw",
     ok: true,
-    level: "warning",
+    level: "info",
     category: "openclaw",
-    code: "OPENCLAW_VERSION_UNKNOWN",
-    message: "已安装，但版本读取失败",
-    suggestion: "可以继续使用；后续 update 功能会单独处理版本更新。",
-    repairable: false,
-    repairAction: null
+    code: "OPENCLAW_COMMAND_UNUSABLE",
+    message: "检测到 OpenClaw 命令文件，但无法执行，将按未安装处理",
+    suggestion: "请重新运行 OpenClaw 准备流程。",
+    repairable: true,
+    repairAction: "install_openclaw"
   };
 }
 

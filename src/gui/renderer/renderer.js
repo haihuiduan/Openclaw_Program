@@ -43,6 +43,8 @@ const wizardState = {
   currentStep: 0,
   environmentStatus: "未检测",
   installStatus: "未安装",
+  installProgressActive: false,
+  installProgress: null,
   configStatus: "待配置",
   verifyStatus: "未检查",
   openClawVersion: "",
@@ -111,6 +113,19 @@ const wizardState = {
 setupCompactStatusBar();
 setupSidebarCollapse();
 applyAppearanceMode();
+
+if (window.openClawInstaller && typeof window.openClawInstaller.onInstallProgress === "function") {
+  window.openClawInstaller.onInstallProgress((update) => {
+    if (!wizardState.installProgressActive) {
+      return;
+    }
+
+    wizardState.installProgress = update || null;
+    if (wizardState.currentPage === "home" && wizardState.currentStep === 1) {
+      renderInstallProgress(update);
+    }
+  });
+}
 
 if (window.openClawInstaller && appStage && appStageLabel) {
   appStageLabel.textContent = window.openClawInstaller.stage;
@@ -3254,6 +3269,8 @@ async function runDoctorStep() {
 
 async function runInstallStep() {
   setBusy(true);
+  wizardState.installProgressActive = true;
+  wizardState.installProgress = null;
   updateLastAction("正在安装");
   renderProgressCard("正在准备 OpenClaw", "工具箱正在检查环境并安装 OpenClaw，请稍候。", [
     "环境检测",
@@ -3284,6 +3301,7 @@ async function runInstallStep() {
     }
     await renderPrepareFailure({ error: getErrorMessage(error) });
   } finally {
+    wizardState.installProgressActive = false;
     setBusy(false);
   }
 }
@@ -3812,8 +3830,8 @@ const providerModels = {
   ],
   deepseek: [
     ["auto", "自动推荐，适合首次使用"],
-    ["deepseek-chat", "deepseek-chat"],
-    ["deepseek-reasoner", "deepseek-reasoner"],
+    ["deepseek/deepseek-v4-pro", "deepseek/deepseek-v4-pro"],
+    ["deepseek/deepseek-v4-flash", "deepseek/deepseek-v4-flash"],
     ["custom", "自定义模型名称"]
   ],
   openai: [
@@ -4041,6 +4059,18 @@ async function renderPrepareFailure(result) {
     card.appendChild(createNotice("可能是网络连接或下载失败。请确认网络可用后重试。", "warning"));
   }
 
+  const failureDetails = createKeyValueList([
+    ["失败步骤", getInstallStepLabel(result && (result.failedStepName || result.failedStepId))],
+    ["原因", result && (result.userMessage || result.error) || "安装流程未完成，请查看安装记录。"],
+    ["错误码", result && result.errorCode || "OPENCLAW_INSTALL_UNKNOWN_FAILED"]
+  ]);
+  failureDetails.classList.add("install-failure-details");
+  card.appendChild(failureDetails);
+
+  if (result && result.errorCode === "OPENCLAW_INSTALL_SCRIPT_FAILED") {
+    card.appendChild(createNotice("查看安装记录后可以看到 npm 原因。", "info"));
+  }
+
   const guidance = document.createElement("div");
   guidance.className = "configure-guide-note";
   guidance.appendChild(createPrepareFailureSection("可能原因", [
@@ -4059,8 +4089,39 @@ async function renderPrepareFailure(result) {
   wizardActions.replaceChildren();
   wizardCard.appendChild(card);
   addAction("重试准备 OpenClaw", runInstallStep, "primary");
+  addAction("打开安装记录", openLogs, "secondary");
   addAction("打开问题排查", () => navigateToPage("troubleshoot"), "secondary");
   addAction("查看基础组件建议", renderDependencyPreparationPage, "secondary");
+}
+
+function renderInstallProgress(update) {
+  const stepName = getInstallStepLabel(update && (update.label || update.id || update.name));
+  const status = update && update.status === "fail" ? "失败" : "进行中";
+  renderProgressCard(
+    update && update.status === "fail" ? "准备 OpenClaw 失败" : stepName,
+    `${status}：${stepName}`,
+    [
+      "检查环境",
+      "检查 OpenClaw",
+      "准备安装目录",
+      "下载安装脚本",
+      "执行安装",
+      "验证安装"
+    ]
+  );
+}
+
+function getInstallStepLabel(value) {
+  const labels = {
+    environment_check: "环境检查",
+    check_existing_install: "检查 OpenClaw",
+    prepare_directory: "准备安装目录",
+    download_script: "下载脚本",
+    execute_script: "执行安装",
+    verify_installation: "安装验证"
+  };
+  const key = String(value || "");
+  return labels[key] || key || "未知步骤";
 }
 
 function createPrepareFailureSection(title, items) {
@@ -4849,6 +4910,11 @@ async function refreshVersionInfo(options = {}) {
       } else {
         updateStatusCard(versionStatus, "未知", "warning");
       }
+    } else {
+      wizardState.installStatus = "未安装";
+      wizardState.openClawVersion = null;
+      updateStatusCard(openClawStatus, "未安装", "fail");
+      updateStatusCard(versionStatus, "未知", "neutral");
     }
 
     updateAboutIndicator();
@@ -4861,14 +4927,17 @@ async function refreshVersionInfo(options = {}) {
     return version;
   } catch (error) {
     wizardState.versionInfo = {
-      installed: wizardState.installStatus === "已安装",
-      currentVersion: wizardState.openClawVersion || null,
+      installed: false,
+      currentVersion: null,
       latestVersion: null,
       updateAvailable: false,
       canCheckLatest: false,
       message: "暂时无法检查最新版本。"
     };
-    updateStatusCard(versionStatus, wizardState.openClawVersion || "未知", wizardState.openClawVersion ? "warning" : "neutral");
+    wizardState.installStatus = "安装异常";
+    wizardState.openClawVersion = null;
+    updateStatusCard(openClawStatus, "安装异常", "fail");
+    updateStatusCard(versionStatus, "未知", "neutral");
     updateAboutIndicator();
     renderAboutMenu();
     return wizardState.versionInfo;
@@ -5070,11 +5139,6 @@ async function probeStartupState() {
     const checks = Array.isArray(report.checks) ? report.checks : [];
     const commandCheck = checks.find((check) => String(check.name || "").includes("OpenClaw 命令"));
 
-    if (commandCheck && commandCheck.ok) {
-      wizardState.installStatus = "已安装";
-      updateStatusCard(openClawStatus, "已安装", "pass");
-    }
-
     if (report.ok) {
       await loadGuiConfigState();
       const verifySummary = syncVerifyStatus(report, { confirmConfig: hasGuiConfigState() });
@@ -5194,6 +5258,11 @@ function syncVerifyStatus(report, options = {}) {
     updateStatusCard(openClawStatus, "已安装", "pass");
     wizardState.openClawVersion = versionCheck.message;
     updateStatusCard(versionStatus, versionCheck.message, "pass");
+  } else if (versionCheck && !versionCheck.ok) {
+    wizardState.installStatus = "安装异常";
+    wizardState.openClawVersion = null;
+    updateStatusCard(openClawStatus, "安装异常", "fail");
+    updateStatusCard(versionStatus, "未知", "neutral");
   }
 
   if (hasConfigPath && canConfirmConfig) {
