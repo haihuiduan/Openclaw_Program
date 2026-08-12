@@ -528,8 +528,11 @@ test("角色启用使用每个 roleId 的局部状态并阻止同角色重复提
   assert.match(roleCard, /enablements\[role\.id\]/);
   assert.match(roleCard, /pending: enabling/);
   assert.match(roleCard, /disabled: enabling/);
+  assert.match(roleCard, /label: enabling \? "正在修复…" : "需要修复"/);
+  assert.match(roleCard, /handler: \(\) => enableMarketplaceRole\(role\.id\)/);
   assert.match(enable, /current && current\.status === "enabling"/);
   assert.match(enable, /enablements\[roleId\]/);
+  assert.doesNotMatch(enable, /role\.enablementStatus === "needs-repair"/);
   assert.doesNotMatch(enable, /setBusy\(|wizardState\.isBusy/);
 });
 

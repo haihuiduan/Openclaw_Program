@@ -8,13 +8,14 @@ const { getCommandEnv } = require("../utils/shell");
 const {
   createEnvironmentResetService
 } = require("../core/environment-reset/resetService");
-const conversationService = require("./services/conversationService");
+const conversationServiceModule = require("./services/conversationService");
 const installerService = require("./services/installerService");
 const roleService = require("./services/roleService");
 const { getProviderApiKeyGuidance } = require("./providerApiKeyGuidance");
 
 let mainWindow = null;
 let installDiagnosticLogger = null;
+let conversationService = conversationServiceModule;
 let environmentResetService = null;
 
 function getInstallLogsDirectory() {
@@ -52,6 +53,14 @@ function initializeInstallDiagnostics() {
     originalPath: process.env.PATH || "",
     finalCommandPath: getCommandEnv(process.env).PATH
   });
+  conversationService = conversationServiceModule.createConversationService(
+    undefined,
+    {
+      conversationOptions: {
+        diagnosticLogger: installDiagnosticLogger
+      }
+    }
+  );
   environmentResetService = createEnvironmentResetService({
     homeDir: os.homedir(),
     diagnosticLogger: installDiagnosticLogger

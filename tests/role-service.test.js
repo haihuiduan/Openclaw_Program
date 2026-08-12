@@ -366,7 +366,7 @@ test("版本冲突返回固定可读摘要而不泄露核心错误详情", async
   assert.doesNotMatch(result.message, /cross-border-team|0\.9\.0|1\.0\.0/);
 });
 
-test("未安装角色不能启用且不会调用 reconcile 或 register", async () => {
+test("未安装角色不能启用且不会调用 register", async () => {
   let reconcileCalls = 0;
   let registerCalls = 0;
   const service = createRoleService(createApi({
@@ -383,7 +383,7 @@ test("未安装角色不能启用且不会调用 reconcile 或 register", async 
   assert.equal(result.ok, false);
   assert.equal(result.enabled, false);
   assert.equal(result.message, "角色尚未安装，请先安装后再启用。");
-  assert.equal(reconcileCalls, 0);
+  assert.equal(reconcileCalls, 1);
   assert.equal(registerCalls, 0);
 });
 
@@ -473,36 +473,78 @@ test("重复启用复用 Core 幂等注册且不产生新的 Instance", async ()
   assert.equal(instances.length, 3);
 });
 
-test("missing 或 drifted Instance 显示需要修复且阻止继续注册", async () => {
-  for (const status of ["missing", "drifted"]) {
-    let registerCalls = 0;
-    const instances = [createSafeInstance("manager", status)];
-    const service = createRoleService(createApi({
-      async listInstalledRoles() {
-        return [createInstalledRoleRecord()];
-      },
-      async listInstances() {
-        return instances;
-      },
-      async reconcileInstances() {
-        return { instances, unmanagedAgents: [] };
-      },
-      async registerInstance() {
-        registerCalls += 1;
+test("missing Instance 显示需要修复且点击后复用注册链路恢复", async () => {
+  const instances = [createSafeInstance("manager", "missing")];
+  const attempted = [];
+  const service = createRoleService(createApi({
+    async listInstalledRoles() {
+      return [createInstalledRoleRecord()];
+    },
+    async listInstances() {
+      return instances;
+    },
+    async reconcileInstances() {
+      return { instances, unmanagedAgents: [] };
+    },
+    async registerInstance(roleId, roleAgentId) {
+      attempted.push(roleAgentId);
+      const index = instances.findIndex((instance) => instance.roleAgentId === roleAgentId);
+      const instance = createSafeInstance(roleAgentId, "registered");
+      if (index >= 0) {
+        instances[index] = instance;
+      } else {
+        instances.push(instance);
       }
-    }));
+      return { ok: true, alreadyRegistered: index >= 0, instance };
+    }
+  }));
 
-    const marketplace = await service.listMarketplaceRoles();
-    const role = marketplace.roles[0];
-    assert.equal(role.enabled, false);
-    assert.equal(role.enablementStatus, "needs-repair");
-    assert.equal(role.instances[0].status, status);
+  const marketplace = await service.listMarketplaceRoles();
+  const role = marketplace.roles[0];
+  assert.equal(role.enabled, false);
+  assert.equal(role.enablementStatus, "needs-repair");
+  assert.equal(role.instances[0].status, "missing");
 
-    const result = await service.enableMarketplaceRole("cross-border-team");
-    assert.equal(result.ok, false);
-    assert.match(result.message, /助手缺失或配置异常/);
-    assert.equal(registerCalls, 0);
-  }
+  const result = await service.enableMarketplaceRole("cross-border-team");
+  assert.equal(result.ok, true);
+  assert.equal(result.enabled, true);
+  assert.deepEqual(attempted, ["manager", "researcher", "creator"]);
+  assert.deepEqual(result.instances.map((instance) => instance.status), [
+    "registered",
+    "registered",
+    "registered"
+  ]);
+});
+
+test("drifted Instance 仍显示需要修复但不会接管或覆盖", async () => {
+  let registerCalls = 0;
+  const instances = [createSafeInstance("manager", "drifted")];
+  const service = createRoleService(createApi({
+    async listInstalledRoles() {
+      return [createInstalledRoleRecord()];
+    },
+    async listInstances() {
+      return instances;
+    },
+    async reconcileInstances() {
+      return { instances, unmanagedAgents: [] };
+    },
+    async registerInstance() {
+      registerCalls += 1;
+      throw new Error("Agent Instance cross-border-team-manager 当前为 drifted，请先运行 instances reconcile 并处理漂移。");
+    }
+  }));
+
+  const marketplace = await service.listMarketplaceRoles();
+  const role = marketplace.roles[0];
+  assert.equal(role.enabled, false);
+  assert.equal(role.enablementStatus, "needs-repair");
+  assert.equal(role.instances[0].status, "drifted");
+
+  const result = await service.enableMarketplaceRole("cross-border-team");
+  assert.equal(result.ok, false);
+  assert.match(result.message, /助手缺失或配置异常|角色启用未完成/);
+  assert.equal(registerCalls, 1);
 });
 
 test("部分注册失败不会伪装为全部成功并停止后续 Agent 注册", async () => {
@@ -600,7 +642,7 @@ test("renderer 不能通过启用接口注入路径、instanceId 或 options", a
     instanceStatePath: "/private/attacker-state"
   });
 
-  assert.equal(receivedOptions.length, 4);
+  assert.equal(receivedOptions.length, 7);
   for (const options of receivedOptions) {
     assert.deepEqual(options, instanceOptions);
   }

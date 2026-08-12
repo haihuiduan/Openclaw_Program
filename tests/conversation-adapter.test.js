@@ -96,6 +96,39 @@ test("Conversation Adapter 薄封装固定命令并仅映射安全白名单", as
   assert.doesNotMatch(serialized, /sessionFile|provider|usage|finalPromptText|private/);
 });
 
+test("Conversation Adapter 将安全诊断注入共享 Execution Adapter", async () => {
+  const events = [];
+  const adapter = createOpenClawConversationAdapter({
+    diagnosticLogger: {
+      event(event, details) {
+        events.push({ event, details });
+      }
+    },
+    spawnImpl: () => fakeChild({
+      status: "ok",
+      runId: "current-run",
+      payloads: [{ text: "当前格式回复" }],
+      meta: {
+        agentMeta: {
+          sessionId: "current-session"
+        }
+      }
+    })
+  });
+  const result = await adapter.sendConversationMessage(input());
+
+  assert.equal(result.ok, true);
+  assert.equal(result.content, "当前格式回复");
+  assert.deepEqual(events.map((entry) => entry.event), [
+    "openclaw_agent_command",
+    "openclaw_agent_result"
+  ]);
+  assert.doesNotMatch(
+    JSON.stringify(events),
+    /只回复安全文本|toolbox-conversation-test-chat|当前格式回复|current-session/
+  );
+});
+
 test("Conversation Adapter 映射失败、timeout 与 signal 且不暴露原始结果", async () => {
   const queue = [
     {

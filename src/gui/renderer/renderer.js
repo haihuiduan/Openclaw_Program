@@ -2000,9 +2000,11 @@ function createMarketplaceRoleCard(role) {
     }];
   } else if (role.enablementStatus === "needs-repair") {
     buttons = [{
-      label: "需要修复",
+      label: enabling ? "正在修复…" : "需要修复",
       kind: "secondary",
-      disabled: true
+      pending: enabling,
+      disabled: enabling,
+      handler: () => enableMarketplaceRole(role.id)
     }];
   } else {
     buttons = [{
@@ -2292,7 +2294,6 @@ async function enableMarketplaceRole(roleId) {
     !role ||
     !role.installed ||
     role.enabled === true ||
-    role.enablementStatus === "needs-repair" ||
     (current && current.status === "enabling")
   ) {
     return null;

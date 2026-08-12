@@ -83,6 +83,10 @@ async function registerInstance(roleId, roleAgentId, options = {}) {
         agentDir
       });
       const observation = assessRegistration(existing, remoteById.get(instanceId));
+      if (observation.status === "missing") {
+        assertRemoteAgentDirAvailable(openClawAgents, existing.agentDir);
+        return repairMissingInstance(existing, settings);
+      }
       if (observation.status !== "registered") {
         throw new Error(
           `Agent Instance ${instanceId} 当前为 ${observation.status}，请先运行 instances reconcile 并处理漂移。`
@@ -180,6 +184,47 @@ async function registerInstance(roleId, roleAgentId, options = {}) {
       );
     }
   });
+}
+
+async function repairMissingInstance(existing, settings) {
+  try {
+    await settings.openClawAdapter.registerAgent({
+      instanceId: existing.instanceId,
+      workspacePath: existing.workspacePath,
+      agentDir: existing.agentDir
+    });
+  } catch (error) {
+    throw new Error(
+      `Agent Instance 重新注册失败：${existing.instanceId}；未继续执行 Agent 调用。（${error.message}）`
+    );
+  }
+
+  let postRegistrationAgents;
+  try {
+    postRegistrationAgents = await settings.openClawAdapter.listAgents();
+  } catch (error) {
+    throw new Error(
+      `OpenClaw Agent ${existing.instanceId} 的 add 命令已成功，但无法核验注册结果；` +
+      `未继续执行 Agent 调用。请运行 instances reconcile 后人工核对。（${error.message}）`
+    );
+  }
+
+  const registeredAgent = postRegistrationAgents.find((agent) => agent.id === existing.instanceId);
+  const observation = assessRegistration(existing, registeredAgent);
+  if (observation.status !== "registered") {
+    throw new Error(
+      `OpenClaw Agent ${existing.instanceId} 的 add 命令已成功，但注册结果缺失或发生配置漂移；` +
+      "未继续执行 Agent 调用。请运行 instances reconcile 后人工核对。"
+    );
+  }
+
+  const repaired = await recordObservation(existing.instanceId, observation, settings);
+  return {
+    ok: true,
+    alreadyRegistered: false,
+    repaired: true,
+    instance: repaired
+  };
 }
 
 async function reconcileInstances(options = {}) {

@@ -202,6 +202,114 @@ test("Execution Adapter 兼容真实 OpenClaw JSON 且只返回安全白名单�
   assert.doesNotMatch(presented, /remote-session-id|sessionFile|workspaceDir|systemPromptReport/);
 });
 
+test("Execution Adapter 兼容当前顶层 payloads 和 meta.agentMeta JSON", async () => {
+  const result = await executeJson({
+    status: "ok",
+    runId: "current-run-id",
+    payloads: [
+      {
+        text: "CURRENT_OPENCLAW_JSON_OK",
+        mediaUrl: null
+      }
+    ],
+    meta: {
+      agentMeta: {
+        sessionId: "current-session-id",
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        usage: {
+          inputTokens: 10,
+          outputTokens: 5
+        }
+      },
+      systemPromptReport: {
+        workspaceDir: "/private/workspace"
+      }
+    }
+  });
+
+  assert.deepEqual(result, {
+    ok: true,
+    interrupted: false,
+    timedOut: false,
+    code: 0,
+    signal: null,
+    outputSummary: "CURRENT_OPENCLAW_JSON_OK",
+    openClawSessionId: "current-session-id",
+    openClawTaskId: null,
+    openClawRunId: "current-run-id"
+  });
+  assert.doesNotMatch(
+    JSON.stringify(result),
+    /provider|model|usage|workspace|systemPromptReport|private/
+  );
+});
+
+test("Execution Adapter 诊断只记录安全命令形状和 JSON 状态", async () => {
+  const events = [];
+  const prompt = "apiKey=sk-test-secret-prompt";
+  const sessionKey = "agent:test-role-worker:private-session-key";
+  const adapter = createOpenClawExecutionAdapter({
+    diagnosticLogger: {
+      event(event, details) {
+        events.push({ event, details });
+      }
+    },
+    spawnImpl: () => fakeChild({
+      stdout: JSON.stringify({
+        status: "ok",
+        runId: "diagnostic-run",
+        payloads: [{ text: "PRIVATE_ASSISTANT_OUTPUT" }],
+        meta: {
+          agentMeta: {
+            sessionId: "PRIVATE_REMOTE_SESSION"
+          }
+        }
+      }),
+      stderr: "PRIVATE_STDERR_DIAGNOSTIC"
+    })
+  });
+  const result = await adapter.startAgentExecution({
+    ...input(),
+    prompt,
+    sessionKey
+  });
+  const serialized = JSON.stringify(events);
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(events.map((entry) => entry.event), [
+    "openclaw_agent_command",
+    "openclaw_agent_result"
+  ]);
+  assert.deepEqual(events[0].details.args, [
+    "agent",
+    "--agent",
+    "test-role-worker",
+    "--message",
+    "[REDACTED]",
+    "--session-key",
+    "[REDACTED]",
+    "--timeout",
+    "1",
+    "--json"
+  ]);
+  assert.equal(events[1].details.exitCode, 0);
+  assert.equal(events[1].details.agentExitCode, 0);
+  assert.equal(events[1].details.stdout.jsonValid, true);
+  assert.deepEqual(events[1].details.stdout.recognizedKeys, [
+    "meta",
+    "payloads",
+    "runId",
+    "status"
+  ]);
+  assert.equal(events[1].details.stderr.present, true);
+  assert.equal(events[1].details.stderr.jsonValid, false);
+  assert.doesNotMatch(
+    serialized,
+    /sk-test-secret|private-session-key|PRIVATE_ASSISTANT_OUTPUT|PRIVATE_REMOTE_SESSION|PRIVATE_STDERR_DIAGNOSTIC/
+  );
+});
+
 test("Execution Adapter 按原顺序拼接多个文本 payload 并统一脱敏截断", () => {
   const parsed = parseAgentExecutionResult(JSON.stringify({
     status: "ok",
@@ -315,13 +423,25 @@ test("Execution Adapter 只接受非空字符串标识且不从其他字段猜�
 
 test("Execution Adapter 对非零退出码和无效 JSON 使用脱敏错误", async () => {
   const secret = "sk-very-sensitive-value";
+  const events = [];
   const failed = createOpenClawExecutionAdapter({
+    diagnosticLogger: {
+      event(event, details) {
+        events.push({ event, details });
+      }
+    },
     spawnImpl: () => fakeChild({ code: 7, stderr: `token=${secret}` })
   });
   const failedResult = await failed.startAgentExecution({ ...input(), prompt: secret });
+  const diagnostic = events.find((entry) => entry.event === "openclaw_agent_result");
+
   assert.equal(failedResult.ok, false);
   assert.match(failedResult.errorSummary, /退出码 7/);
   assert.doesNotMatch(JSON.stringify(failedResult), /sensitive|token/);
+  assert.equal(diagnostic.details.agentExitCode, 7);
+  assert.equal(diagnostic.details.stderr.present, true);
+  assert.match(diagnostic.details.agentStderrSafeSummary, /\[REDACTED\]/);
+  assert.doesNotMatch(JSON.stringify(diagnostic), /sk-very-sensitive-value|token=/);
 
   const invalid = createOpenClawExecutionAdapter({ spawnImpl: () => fakeChild({ stdout: "not-json" }) });
   const invalidResult = await invalid.startAgentExecution(input());

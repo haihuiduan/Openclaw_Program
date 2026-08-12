@@ -84,6 +84,7 @@ function createConversationService(api = publicApi, options = {}) {
   return {
     async listChatConversations() {
       try {
+        await reconcileInstancesBestEffort();
         const [instanceRecords, registry, installedRoles, conversations] =
           await Promise.all([
             api.listInstances(instanceOptions),
@@ -270,6 +271,7 @@ function createConversationService(api = publicApi, options = {}) {
           instanceId,
           conversationId
         );
+        await ensureConversationInstanceReady(conversation.instanceId);
         const message = normalizeMessageContent(content);
         const turn = await api.sendMessage(
           conversation.conversationId,
@@ -339,6 +341,41 @@ function createConversationService(api = publicApi, options = {}) {
       }
     }
   };
+
+  async function reconcileInstancesBestEffort() {
+    if (typeof api.reconcileInstances !== "function") {
+      return null;
+    }
+    try {
+      return await api.reconcileInstances(instanceOptions);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async function ensureConversationInstanceReady(instanceId) {
+    await api.reconcileInstances(instanceOptions);
+    const instance = await api.inspectInstance(instanceId, instanceOptions);
+    if (!instance || instance.instanceId === "main") {
+      throw new Error("该角色的 OpenClaw Agent 已丢失，请重新安装或修复角色。");
+    }
+    if (instance.status === "registered") {
+      return instance;
+    }
+    if (instance.status !== "missing") {
+      throw new Error("该角色的 OpenClaw Agent 配置异常，请刷新状态或修复角色。");
+    }
+    if (!instance.roleId || !instance.roleAgentId) {
+      throw new Error("该角色的 OpenClaw Agent 已丢失，请重新安装或修复角色。");
+    }
+
+    await api.registerInstance(instance.roleId, instance.roleAgentId, instanceOptions);
+    const repaired = await api.inspectInstance(instanceId, instanceOptions);
+    if (!repaired || repaired.status !== "registered") {
+      throw new Error("该角色的 OpenClaw Agent 已丢失，请重新安装或修复角色。");
+    }
+    return repaired;
+  }
 }
 
 function createAvailableAgentMap(instanceRecords, registry, installedRoles) {

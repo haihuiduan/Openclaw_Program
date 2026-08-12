@@ -15,6 +15,7 @@ function createOpenClawConversationAdapter(options = {}) {
   const executionAdapter =
     options.executionAdapter ||
     createOpenClawExecutionAdapter({
+      diagnosticLogger: options.diagnosticLogger,
       spawnImpl: options.spawnImpl,
       maxOutputBytes: options.maxOutputBytes,
       setTimeoutImpl: options.setTimeoutImpl,

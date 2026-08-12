@@ -55,6 +55,12 @@ function createMockApi(overrides = {}) {
         assistantMessage: { status: "completed" }
       };
     },
+    async reconcileInstances() {
+      return {};
+    },
+    async registerInstance() {
+      return {};
+    },
     async reconcileConversations() {
       return {};
     },
@@ -122,7 +128,7 @@ test("聊天中心会话列表只返回已安装可用助手的 active Conversat
       }, {
         instanceId: "cross-border-team-creator",
         roleId: "cross-border-team",
-        roleAgentId: "creator",
+        roleAgentId: "manager",
         status: "missing"
       }];
     },
@@ -629,6 +635,169 @@ test("Conversation GUI 服务发送失败保留真实失败消息但不伪装成
   assert.match(result.message, /远端状态无法确认/);
 });
 
+test("Conversation GUI 服务发送前发现远端 Agent 缺失时按 Instance 记录自动重注册并继续发送", async () => {
+  const calls = [];
+  let instanceStatus = "registered";
+  const service = createConversationService(createMockApi({
+    async inspectInstance(instanceId) {
+      return {
+        instanceId,
+        roleId: "cross-border-team",
+        roleAgentId: "creator",
+        status: instanceStatus
+      };
+    },
+    async reconcileInstances() {
+      calls.push("reconcile");
+      instanceStatus = "missing";
+      return {};
+    },
+    async registerInstance(roleId, roleAgentId) {
+      calls.push(`register:${roleId}:${roleAgentId}`);
+      instanceStatus = "registered";
+      return { ok: true, repaired: true };
+    },
+    async sendMessage() {
+      calls.push("send");
+      return { assistantMessage: { status: "completed" } };
+    }
+  }));
+
+  const result = await service.sendConversationMessage(
+    "cross-border-team-manager",
+    "chat-safe",
+    "测试自动修复"
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, [
+    "reconcile",
+    "register:cross-border-team:creator",
+    "send"
+  ]);
+});
+
+test("Conversation GUI 服务发送前 Agent 已存在时不重复注册", async () => {
+  const calls = [];
+  const service = createConversationService(createMockApi({
+    async inspectInstance(instanceId) {
+      return {
+        instanceId,
+        roleId: "cross-border-team",
+        roleAgentId: "manager",
+        status: "registered"
+      };
+    },
+    async reconcileInstances() {
+      calls.push("reconcile");
+      return {};
+    },
+    async registerInstance() {
+      calls.push("register");
+      return {};
+    },
+    async sendMessage() {
+      calls.push("send");
+      return { assistantMessage: { status: "completed" } };
+    }
+  }));
+
+  const result = await service.sendConversationMessage(
+    "cross-border-team-manager",
+    "chat-safe",
+    "测试"
+  );
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, ["reconcile", "send"]);
+});
+
+test("Conversation GUI 服务缺少合法 Instance 配置或 drift 时不注册且不发送", async () => {
+  for (const status of ["missing", "drifted"]) {
+    const calls = [];
+    let inspected = 0;
+    const service = createConversationService(createMockApi({
+      async inspectInstance(instanceId) {
+        inspected += 1;
+        if (inspected === 1) {
+          return {
+            instanceId,
+            roleId: "cross-border-team",
+            roleAgentId: "manager",
+            status: "registered"
+          };
+        }
+        return {
+          instanceId,
+          roleId: status === "missing" ? "" : "cross-border-team",
+          roleAgentId: status === "missing" ? "" : "manager",
+          status
+        };
+      },
+      async reconcileInstances() {
+        calls.push("reconcile");
+        return {};
+      },
+      async registerInstance() {
+        calls.push("register");
+        return {};
+      },
+      async sendMessage() {
+        calls.push("send");
+        return { assistantMessage: { status: "completed" } };
+      }
+    }));
+
+    const result = await service.sendConversationMessage(
+      "cross-border-team-manager",
+      "chat-safe",
+      "测试"
+    );
+
+    assert.equal(result.ok, false);
+    assert.doesNotMatch(result.message, /\/private|agentDir|workspacePath/);
+    assert.deepEqual(calls, ["reconcile"]);
+  }
+});
+
+test("Conversation GUI 服务重注册失败时只尝试一次且不继续发送", async () => {
+  const calls = [];
+  let instanceStatus = "registered";
+  const service = createConversationService(createMockApi({
+    async inspectInstance(instanceId) {
+      return {
+        instanceId,
+        roleId: "cross-border-team",
+        roleAgentId: "creator",
+        status: instanceStatus
+      };
+    },
+    async reconcileInstances() {
+      calls.push("reconcile");
+      instanceStatus = "missing";
+      return {};
+    },
+    async registerInstance() {
+      calls.push("register");
+      throw new Error("OpenClaw Agent 注册失败：/Users/example/private");
+    },
+    async sendMessage() {
+      calls.push("send");
+      return { assistantMessage: { status: "completed" } };
+    }
+  }));
+
+  const result = await service.sendConversationMessage(
+    "cross-border-team-manager",
+    "chat-safe",
+    "测试"
+  );
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(calls, ["reconcile", "register"]);
+  assert.doesNotMatch(result.message, /\/Users\/example|private/);
+});
+
 test("Conversation GUI 服务使用临时 State 与 Mock Adapter完成两轮真实 Core 对话", async (t) => {
   const root = fs.mkdtempSync(
     path.join(os.tmpdir(), "openclaw-conversation-service-")
@@ -695,7 +864,21 @@ test("Conversation GUI 服务使用临时 State 与 Mock Adapter完成两轮真�
   };
   const serviceOptions = {
     conversationOptions,
-    instanceOptions: { instanceStatePath },
+    instanceOptions: {
+      instanceStatePath,
+      openClawAdapter: {
+        async listAgents() {
+          return [{
+            id: instanceId,
+            workspacePath: path.join(root, "workspaces", "manager"),
+            agentDir: path.join(root, "agent-dirs", instanceId)
+          }];
+        },
+        async registerAgent() {
+          throw new Error("不应重新注册");
+        }
+      }
+    },
     createConversationId: () => "chat-integration"
   };
   const service = createConversationService(publicApi, serviceOptions);
@@ -838,9 +1021,7 @@ test("隔离环境安装角色、注册三个 Instance 后 researcher 可连续�
   };
   const serviceOptions = {
     conversationOptions,
-    instanceOptions: {
-      instanceStatePath: instanceOptions.instanceStatePath
-    },
+    instanceOptions,
     createConversationId: () => "chat-researcher"
   };
   const service = createConversationService(publicApi, serviceOptions);

@@ -14,6 +14,7 @@ function createRoleService(api = publicApi, options = {}) {
   const service = {
     async listMarketplaceRoles() {
       try {
+        await reconcileInstancesBestEffort(api, instanceOptions);
         const [registry, installedRoles, instanceRecords] = await Promise.all([
           api.scanRoleRegistry(lifecycleOptions),
           api.listInstalledRoles(lifecycleOptions),
@@ -150,13 +151,11 @@ function createRoleService(api = publicApi, options = {}) {
         marketplace = await service.listMarketplaceRoles();
         role = findMarketplaceRole(marketplace, normalizedRoleId);
 
-        if (!role || role.enablementStatus === "needs-repair") {
+        if (!role) {
           return createEnableResponse({
             roleId: normalizedRoleId,
             installed: true,
-            instances: role ? role.instances : [],
-            instanceCount: role ? role.instanceCount : 0,
-            message: "已有助手缺失或配置异常，请先修复后重试。",
+            message: "未找到该角色，请刷新角色列表后重试。",
             marketplace
           });
         }
@@ -223,6 +222,17 @@ function createRoleService(api = publicApi, options = {}) {
   };
 
   return service;
+}
+
+async function reconcileInstancesBestEffort(api, instanceOptions) {
+  if (!api || typeof api.reconcileInstances !== "function") {
+    return;
+  }
+  try {
+    await api.reconcileInstances(instanceOptions);
+  } catch (error) {
+    // 角色列表不能因为 OpenClaw 当前不可用而完全无法展示。
+  }
 }
 
 function toMyRole(role) {

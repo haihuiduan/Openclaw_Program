@@ -27,6 +27,7 @@ function createOpenClawExecutionAdapter(options = {}) {
       ];
       return executeSpawn(spawnImpl, args, normalized, {
         ...runtimeOptions,
+        diagnosticLogger: options.diagnosticLogger,
         maxOutputBytes,
         env: getCommandEnv(runtimeOptions.env || process.env),
         setTimeoutImpl: options.setTimeoutImpl || setTimeout,
@@ -38,6 +39,12 @@ function createOpenClawExecutionAdapter(options = {}) {
 
 function executeSpawn(spawnImpl, args, input, options) {
   return new Promise((resolve) => {
+    logAgentDiagnostic(options.diagnosticLogger, "openclaw_agent_command", {
+      command: OPENCLAW_EXECUTABLE,
+      args: sanitizeAgentCommandArgs(args),
+      shell: false
+    });
+
     let child;
     try {
       child = spawnImpl(OPENCLAW_EXECUTABLE, args, {
@@ -46,6 +53,16 @@ function executeSpawn(spawnImpl, args, input, options) {
         stdio: "pipe"
       });
     } catch (error) {
+      logAgentDiagnostic(options.diagnosticLogger, "openclaw_agent_result", {
+        agentExitCode: null,
+        agentStderrSafeSummary: null,
+        exitCode: null,
+        signal: null,
+        timedOut: false,
+        spawnFailed: true,
+        stdout: describeOutput(""),
+        stderr: describeOutput("")
+      });
       resolve(failedResult("spawn", "无法启动 OpenClaw Agent 执行。"));
       return;
     }
@@ -159,12 +176,39 @@ function executeSpawn(spawnImpl, args, input, options) {
       if (settled) return;
       settled = true;
       options.clearTimeoutImpl(timeout);
+      logAgentDiagnostic(options.diagnosticLogger, "openclaw_agent_result", {
+        agentExitCode: Number.isInteger(result.code) ? result.code : null,
+        agentStderrSafeSummary:
+          result.ok === true ? null : summarizeAgentStderr(stderr),
+        exitCode: Number.isInteger(result.code) ? result.code : null,
+        signal: typeof result.signal === "string" ? result.signal : null,
+        timedOut: Boolean(result.timedOut),
+        spawnFailed: result.errorType === "spawn",
+        stdout: describeOutput(stdout),
+        stderr: describeOutput(stderr)
+      });
       Promise.resolve(spawnReady).then(
         () => resolve(result),
         () => resolve(failedResult("spawn-callback", "Execution 启动状态写入失败。"))
       );
     }
   });
+}
+
+function summarizeAgentStderr(stderr) {
+  const text = redactSensitiveText(stderr || "")
+    .replace(
+      /\b(?:api[_-]?key|token|secret|authorization|cookie)\s*[:=]\s*\[REDACTED\]/gi,
+      "[REDACTED]"
+    )
+    .replace(/\b(?:https?|wss?|file):\/\/[^\s"'<>]+/gi, "[REDACTED_URL]")
+    .replace(/\/Users\/[^/\s]+/g, "~")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) {
+    return null;
+  }
+  return text.length > 800 ? text.slice(0, 800) + "…[TRUNCATED]" : text;
 }
 
 function parseAgentExecutionResult(stdout) {
@@ -193,20 +237,17 @@ function parseAgentExecutionResult(stdout) {
 }
 
 function summarizePayload(payload) {
+  if (Object.hasOwn(payload, "payloads")) {
+    return summarizePayloadArray(payload.payloads, "payloads");
+  }
+
   const result = payload.result;
   if (isObject(result) && Object.hasOwn(result, "payloads")) {
-    if (!Array.isArray(result.payloads)) {
-      throw new Error("OpenClaw Agent result.payloads 必须是数组。");
-    }
-    const texts = result.payloads
-      .filter(isObject)
-      .map((item) => typeof item.text === "string" ? item.text.trim() : "")
-      .filter(Boolean);
-    if (!texts.length) throw new Error("OpenClaw Agent 没有返回可用的文本结果。");
-    return normalizeOutputSummary(texts.join(PAYLOAD_TEXT_SEPARATOR));
+    return summarizePayloadArray(result.payloads, "result.payloads");
   }
 
   const safeTopLevelCandidates = [
+    payload.final,
     payload.output,
     payload.response,
     payload.reply,
@@ -217,6 +258,20 @@ function summarizePayload(payload) {
   if (compatibleText !== undefined) return normalizeOutputSummary(compatibleText);
   if (isNonEmptyString(result)) return normalizeOutputSummary(result);
   throw new Error("OpenClaw Agent JSON 没有可用的安全文本结果。");
+}
+
+function summarizePayloadArray(payloads, fieldName) {
+  if (!Array.isArray(payloads)) {
+    throw new Error(`OpenClaw Agent ${fieldName} 必须是数组。`);
+  }
+  const texts = payloads
+    .filter(isObject)
+    .map((item) => typeof item.text === "string" ? item.text.trim() : "")
+    .filter(Boolean);
+  if (!texts.length) {
+    throw new Error("OpenClaw Agent 没有返回可用的文本结果。");
+  }
+  return normalizeOutputSummary(texts.join(PAYLOAD_TEXT_SEPARATOR));
 }
 
 function optionalIdentifier(value) {
@@ -234,8 +289,13 @@ function assertSuccessfulStatus(payload) {
 }
 
 function nestedAgentMeta(payload) {
+  if (isObject(payload.meta) && isObject(payload.meta.agentMeta)) {
+    return payload.meta.agentMeta;
+  }
   if (!isObject(payload.result) || !isObject(payload.result.meta)) return null;
-  return isObject(payload.result.meta.agentMeta) ? payload.result.meta.agentMeta : null;
+  return isObject(payload.result.meta.agentMeta)
+    ? payload.result.meta.agentMeta
+    : null;
 }
 
 function firstIdentifier(values) {
@@ -290,6 +350,85 @@ function appendLimited(current, currentBytes, chunk, maximum) {
   const remaining = maximum - currentBytes;
   const slice = buffer.subarray(0, remaining);
   return { value: current + slice.toString(), bytes: currentBytes + slice.length };
+}
+
+function sanitizeAgentCommandArgs(args) {
+  const safe = [];
+  let redactNext = false;
+
+  for (const rawArg of args) {
+    const arg = String(rawArg);
+
+    if (redactNext) {
+      safe.push("[REDACTED]");
+      redactNext = false;
+      continue;
+    }
+
+    safe.push(arg);
+    if (arg === "--message" || arg === "--session-key") {
+      redactNext = true;
+    }
+  }
+
+  return safe;
+}
+
+function describeOutput(output) {
+  const text = String(output || "");
+  const description = {
+    present: Boolean(text),
+    bytes: Buffer.byteLength(text),
+    jsonValid: false,
+    topLevelType: null,
+    recognizedKeys: []
+  };
+
+  if (!text.trim()) {
+    return description;
+  }
+
+  try {
+    const parsed = JSON.parse(text);
+    description.jsonValid = true;
+    description.topLevelType = Array.isArray(parsed)
+      ? "array"
+      : parsed === null
+        ? "null"
+        : typeof parsed;
+    if (isObject(parsed)) {
+      const knownKeys = new Set([
+        "ok",
+        "status",
+        "result",
+        "payloads",
+        "meta",
+        "final",
+        "runId",
+        "sessionId",
+        "error"
+      ]);
+      description.recognizedKeys = Object.keys(parsed)
+        .filter((key) => knownKeys.has(key))
+        .sort();
+    }
+  } catch (error) {
+    // 只记录 JSON 是否有效，不记录原始 stdout/stderr。
+  }
+
+  return description;
+}
+
+function logAgentDiagnostic(logger, event, details) {
+  if (!logger || typeof logger.event !== "function") {
+    return;
+  }
+
+  try {
+    logger.event(event, details);
+  } catch (error) {
+    // 诊断失败不能改变 Agent 调用结果。
+  }
 }
 
 function failedResult(errorType, errorSummary) {
